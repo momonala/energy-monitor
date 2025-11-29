@@ -16,6 +16,7 @@
   const btnLastWeek = document.getElementById("btn-last-week");
   const btnLastHour = document.getElementById("btn-last-hour");
   const btnLastDay = document.getElementById("btn-last-day");
+  const btnRefresh = document.getElementById("btn-refresh");
   // Hover overlay elements
   const hoverTime = document.getElementById("hover-time");
   const hoverTotalEnergy = document.getElementById("hover-total-energy");
@@ -38,7 +39,23 @@
 
   let data = []; // [ [timeMs, powerW], ... ]
   let selection = { start: null, end: null };
+  const pointerSelect = {
+    active: false,
+    pointerId: null,
+    startPx: null,
+    startMs: null,
+  };
   let pollingMs = 10000;
+
+  const dateTimeFmtOpts = {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  };
 
   const fmt = {
     n: (v, digits = 2) =>
@@ -46,7 +63,7 @@
     t: (ms) => {
       if (!ms) return "–";
       const d = new Date(ms);
-      return d.toLocaleString();
+      return d.toLocaleString(undefined, dateTimeFmtOpts);
     },
   };
 
@@ -129,10 +146,7 @@
               if (isFinite(x0Sec) && isFinite(x1Sec) && x1Sec > x0Sec) {
                 const startMs = Math.floor(x0Sec * 1000);
                 const endMs = Math.floor(x1Sec * 1000);
-                selection = { start: startMs, end: endMs };
-                uInst.setScale("x", { min: x0Sec, max: x1Sec });
-                renderSelection();
-                computeStatsLocal(startMs, endMs);
+                applySelectionRange(startMs, endMs);
               }
               // clear selection rectangle
               uInst.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
@@ -148,14 +162,20 @@
       },
     };
     u = new uPlot(opts, [xVals, yVals, eVals], chartEl);
+    if (u && u.over) {
+      const over = u.over;
+      over.addEventListener("pointerdown", handlePointerSelectStart);
+      over.addEventListener("pointermove", handlePointerSelectMove);
+      over.addEventListener("pointerup", handlePointerSelectEnd);
+      over.addEventListener("pointercancel", cancelPointerSelection);
+      over.addEventListener("lostpointercapture", cancelPointerSelection);
+    }
 
     // Double-click resets zoom to full range
     chartEl.addEventListener("dblclick", () => {
       if (xVals.length) {
         u.setScale("x", { min: xVals[0], max: xVals[xVals.length - 1] });
-        selection = { start: null, end: null };
-        renderSelection();
-        if (statusWindow) statusWindow.textContent = "live";
+        clearSelection();
       }
     });
   }
@@ -163,15 +183,45 @@
   function renderSelection() {
     if (selection.start && selection.end) {
       const delta = selection.end - selection.start;
-      const line1 = fmt.t(selection.start);
-      const line2 = fmt.t(selection.end);
       const line3 = `${formatDuration(delta)}`;
-      // statRange.innerHTML = `${line1} → ${line2}<br>${line3}`;
       statRange.innerHTML = `${line3}`;
 
     } else {
       statRange.textContent = "";
     }
+  }
+
+  function applySelectionRange(startMs, endMs, label = "range", clampToData = true) {
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
+    if (clampToData && xVals.length) {
+      const minMs = xVals[0] * 1000;
+      const maxMs = xVals[xVals.length - 1] * 1000;
+      startMs = Math.max(minMs, Math.min(startMs, maxMs));
+      endMs = Math.max(minMs, Math.min(endMs, maxMs));
+      if (endMs <= startMs) endMs = Math.min(maxMs, startMs + 1);
+    }
+    if (endMs <= startMs) return;
+    selection = { start: startMs, end: endMs };
+    clearPointerSelectionOverlay();
+    if (u) {
+      u.setScale("x", { min: startMs / 1000, max: endMs / 1000 });
+    }
+    renderSelection();
+    computeStatsLocal(startMs, endMs);
+    if (statusWindow) statusWindow.textContent = label;
+  }
+
+  function clearSelection() {
+    selection = { start: null, end: null };
+    if (statEnergy) statEnergy.textContent = "–";
+    if (statCostRange) statCostRange.textContent = "–";
+    if (statAvg) statAvg.textContent = "–";
+    if (statMax) statMax.textContent = "–";
+    if (statMin) statMin.textContent = "–";
+    if (statCount) statCount.textContent = "–";
+    renderSelection();
+    if (statusWindow) statusWindow.textContent = "live";
+    clearPointerSelectionOverlay();
   }
 
   function updateChart() {
@@ -192,6 +242,9 @@
     const lastIdx = xVals.length - 1;
     if (statusLast && lastIdx >= 0) {
       statusLast.textContent = `Last updated: ${fmt.t(xVals[lastIdx] * 1000)}`;
+    }
+    if (selection.start && selection.end) {
+      computeStatsLocal(selection.start, selection.end);
     }
   }
 
@@ -337,52 +390,194 @@
     if (secs || parts.length === 0) parts.push(`${secs}s`);
     return parts.join(" ");
   }
-  function zoomLast(durationMs) {
-    const now = Date.now();
-    const start = now - durationMs;
-    if (u) {
-      u.setScale("x", { min: start / 1000, max: now / 1000 });
-    }
-    if (statusWindow) statusWindow.textContent = durationMs >= 86_400_000 ? "last day" : "last hour";
+  function selectRelativeRange(durationMs, label) {
+    if (!xVals.length) return;
+    const endMs = xVals[xVals.length - 1] * 1000;
+    const startMs = Math.max(xVals[0] * 1000, endMs - durationMs);
+    applySelectionRange(startMs, endMs, label);
   }
-  function zoomToRange(startMs, endMs) {
-    if (u) {
-      u.setScale("x", { min: startMs / 1000, max: endMs / 1000 });
+
+  function selectCalendarRange(startMs, endMs, label = "range") {
+    if (!xVals.length) return;
+    applySelectionRange(startMs, endMs, label);
+  }
+
+  function shouldUsePointerSelection(evt) {
+    if (!evt) return false;
+    if (evt.pointerType === "touch" || evt.pointerType === "pen") return true;
+    if (evt.pointerType === "mouse") {
+      return typeof navigator !== "undefined" && navigator.maxTouchPoints > 0;
+    }
+    return false;
+  }
+
+  function getRelativeXPx(evt) {
+    if (!u || !u.over) return null;
+    const rect = u.over.getBoundingClientRect();
+    if (!rect || !rect.width) return null;
+    const x = evt.clientX - rect.left;
+    if (!Number.isFinite(x)) return null;
+    return Math.max(0, Math.min(rect.width, x));
+  }
+
+  function pxToMs(px) {
+    if (!u || px == null) return null;
+    const xValSec = u.posToVal(px, "x");
+    return Number.isFinite(xValSec) ? Math.floor(xValSec * 1000) : null;
+  }
+
+  function findNearestIndex(targetSec) {
+    if (!xVals.length || !Number.isFinite(targetSec)) return null;
+    let lo = 0;
+    let hi = xVals.length - 1;
+    while (lo <= hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const midVal = xVals[mid];
+      if (midVal === targetSec) return mid;
+      if (midVal < targetSec) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    if (lo >= xVals.length) return xVals.length - 1;
+    if (hi < 0) return 0;
+    return targetSec - xVals[hi] <= xVals[lo] - targetSec ? hi : lo;
+  }
+
+  function updateHoverAtPx(px) {
+    if (!u || !xVals.length || px == null) return;
+    const xValSec = u.posToVal(px, "x");
+    const idx = findNearestIndex(xValSec);
+    if (idx != null) {
+      updateHover(idx);
     }
   }
 
+  function renderPointerSelection(currentPx) {
+    if (!pointerSelect.active || pointerSelect.startPx == null || currentPx == null || !u || !u.over) return;
+    const left = Math.min(pointerSelect.startPx, currentPx);
+    const width = Math.abs(pointerSelect.startPx - currentPx);
+    const height = u.over.clientHeight || chartEl.clientHeight || 0;
+    u.setSelect({ left, width, top: 0, height }, false);
+  }
+
+  function clearPointerSelectionOverlay() {
+    if (!u) return;
+    u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+  }
+
+  function resetPointerSelectionState() {
+    if (pointerSelect.pointerId != null && u && u.over && u.over.releasePointerCapture) {
+      try {
+        u.over.releasePointerCapture(pointerSelect.pointerId);
+      } catch (_) {
+        // ignore
+      }
+    }
+    pointerSelect.active = false;
+    pointerSelect.pointerId = null;
+    pointerSelect.startPx = null;
+    pointerSelect.startMs = null;
+    clearPointerSelectionOverlay();
+  }
+
+  function handlePointerSelectStart(evt) {
+    if (!shouldUsePointerSelection(evt) || !u || !xVals.length) return;
+    const px = getRelativeXPx(evt);
+    if (px == null) return;
+    const startMs = pxToMs(px);
+    if (!Number.isFinite(startMs)) return;
+    pointerSelect.active = true;
+    pointerSelect.pointerId = evt.pointerId;
+    pointerSelect.startPx = px;
+    pointerSelect.startMs = startMs;
+    if (u.over.setPointerCapture) {
+      try {
+        u.over.setPointerCapture(evt.pointerId);
+      } catch (_) {
+        // ignore inability to capture
+      }
+    }
+    updateHoverAtPx(px);
+    renderPointerSelection(px);
+    evt.preventDefault();
+    if (statusWindow) statusWindow.textContent = "selecting";
+  }
+
+  function handlePointerSelectMove(evt) {
+    if (!pointerSelect.active || evt.pointerId !== pointerSelect.pointerId || !shouldUsePointerSelection(evt)) return;
+    const px = getRelativeXPx(evt);
+    if (px == null) return;
+    updateHoverAtPx(px);
+    renderPointerSelection(px);
+    evt.preventDefault();
+  }
+
+  function finalizePointerSelection(px) {
+    const startMs = pointerSelect.startMs;
+    const endMs = pxToMs(px != null ? px : pointerSelect.startPx);
+    resetPointerSelectionState();
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
+    const from = Math.min(startMs, endMs);
+    let to = Math.max(startMs, endMs);
+    if (to === from) {
+      to = from + 1;
+    }
+    applySelectionRange(from, to);
+  }
+
+  function handlePointerSelectEnd(evt) {
+    if (!pointerSelect.active || evt.pointerId !== pointerSelect.pointerId || !shouldUsePointerSelection(evt)) return;
+    const px = getRelativeXPx(evt);
+    finalizePointerSelection(px);
+    evt.preventDefault();
+  }
+
+  function cancelPointerSelection(evt) {
+    if (!pointerSelect.active) return;
+    if (evt && pointerSelect.pointerId != null && evt.pointerId !== pointerSelect.pointerId) return;
+    resetPointerSelectionState();
+  }
+
   btnReset.addEventListener("click", () => {
-    selection = { start: null, end: null };
     if (u && xVals.length) {
       u.setScale("x", { min: xVals[0], max: xVals[xVals.length - 1] });
     }
-    if (statusWindow) statusWindow.textContent = "live";
-    statEnergy.textContent = "–";
-    statAvg.textContent = "–";
-    statMax.textContent = "–";
-    statMin.textContent = "–";
-    statCount.textContent = "–";
-    renderSelection();
+    clearSelection();
   });
-  if (btnLastHour) btnLastHour.addEventListener("click", () => zoomLast(60 * 60 * 1000));
-  if (btnLastDay) btnLastDay.addEventListener("click", () => zoomLast(24 * 60 * 60 * 1000));
+  if (btnRefresh) {
+    btnRefresh.addEventListener("click", async () => {
+      if (btnRefresh.disabled) return;
+      const originalLabel = btnRefresh.textContent;
+      btnRefresh.disabled = true;
+      btnRefresh.textContent = "Refreshing...";
+      btnRefresh.classList.add("btn-loading");
+      try {
+        await fetchReadings();
+      } finally {
+        btnRefresh.disabled = false;
+        btnRefresh.textContent = originalLabel;
+        btnRefresh.classList.remove("btn-loading");
+      }
+    });
+  }
+  if (btnLastHour) btnLastHour.addEventListener("click", () => selectRelativeRange(60 * 60 * 1000, "last hour"));
+  if (btnLastDay) btnLastDay.addEventListener("click", () => selectRelativeRange(24 * 60 * 60 * 1000, "last day"));
   if (btnLastWeek) btnLastWeek.addEventListener("click", () => {
     const now = new Date();
     const day = now.getDay(); // 0 Sunday .. 6 Saturday
     const start = new Date(now);
     start.setHours(0,0,0,0);
     start.setDate(start.getDate() - day); // week starting Sunday
-    zoomToRange(start.getTime(), now.getTime());
+    selectCalendarRange(start.getTime(), now.getTime(), "last week");
   });
   if (btnLastMonth) btnLastMonth.addEventListener("click", () => {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), 0);
-    zoomToRange(start.getTime(), now.getTime());
+    selectCalendarRange(start.getTime(), now.getTime(), "last month");
   });
   if (btnLastYear) btnLastYear.addEventListener("click", () => {
     const now = new Date();
     const start = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), 0);
-    zoomToRange(start.getTime(), now.getTime());
+    selectCalendarRange(start.getTime(), now.getTime(), "last year");
   });
 
   async function poll() {

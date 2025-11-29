@@ -64,27 +64,35 @@ html, body {
 }
 
 .app-main {
+  width: 100%;
   max-width: none;
-  margin: 0 2vw;
-  padding: 0 0 24px 0;
+  margin: 0;
+  padding: 0 1rem 24px;
 }
 
 .chart-layout {
   display: grid;
-  grid-template-columns: 70% 15% 15%;
+  grid-template-columns: minmax(0, 2.5fr) minmax(220px, 0.3fr) minmax(220px, 0.3fr);
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
+  width: 100%;
+  max-height: 100%;
 }
 
-.chart-card, .stats-card {
+.chart-card,
+.stats-card {
   background: linear-gradient(180deg, rgba(22,22,22,0.94), rgba(22,22,22,0.86));
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 16px;
   box-shadow: var(--shadow);
-  padding: 12px;
-  height: 72h;
+  padding: 10px;
+  min-height: 0;
+  height: auto;
+  display: flex;
+  flex-direction: column;
 }
 .chart-card { margin-bottom: 0; }
+.stats-card { min-width: 0; }
 
 .chart {
   width: 100%;
@@ -94,6 +102,11 @@ html, body {
 
 .chart-wrapper {
   position: relative;
+  flex: 1;
+  display: flex;
+}
+.chart-wrapper #chart {
+  flex: 1;
 }
 .hover-overlay {
   position: absolute;
@@ -146,11 +159,36 @@ html, body {
   border-color: rgba(255,255,255,0.22);
   transform: translateY(-1px);
 }
+.btn-loading {
+  position: relative;
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fff;
+  overflow: hidden;
+}
+.btn-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    60deg,
+    rgba(239, 68, 68, 0) 0%,
+    rgba(239, 68, 68, 0.5) 50%,
+    rgba(239, 68, 68, 0) 100%
+  );
+  transform: translateX(-100%);
+  animation: refreshSweep 1.2s linear infinite;
+}
 
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
+}
+.stats-card .stats-grid {
+  flex: none;
+  grid-template-columns: 1fr;
+  width: 100%;
 }
 .stats-grid.single-col {
   grid-template-columns: 1fr;
@@ -158,17 +196,24 @@ html, body {
 .stat {
   background: rgba(28,28,28,0.9);
   border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 12px;
-  padding: 10px;
+  border-radius: 16px;
+  padding: 12px;
+  min-height: 72px;
 }
 .stat .label {
   font-size: 11px;
   color: var(--muted);
 }
 .stat .value {
-  margin-top: 6px;
+  margin-top: 10px;
   font-size: 16px;
   font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: .7;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .app-footer {
@@ -182,6 +227,11 @@ html, body {
   .chart { height: 50vh; }
   .chart-layout { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .chart-card,
+  .stats-card {
+    min-height: auto;
+    height: auto;
+  }
 }
 @media (max-width: 600px) {
   .stats-grid { grid-template-columns: 1fr; }
@@ -191,5 +241,14 @@ html, body {
 .uplot .u-select {
   background: rgba(96,165,250,0.15);
   border: 1px solid rgba(96,165,250,0.9);
+}
+
+@keyframes refreshSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
