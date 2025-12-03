@@ -35,7 +35,11 @@ class EnergyReading(Base):
     __tablename__ = "energy_readings"
 
     timestamp = Column(
-        DateTime, default=datetime.now(local_timezone()), nullable=False, index=True, primary_key=True
+        DateTime,
+        default=datetime.now(local_timezone()),
+        nullable=False,
+        index=True,
+        primary_key=True,
     )
     meter_id = Column(String(255), nullable=True, index=True)
     power_watts = Column(Float, nullable=True)
@@ -127,7 +131,7 @@ def log_db_health_check():
 
 
 def get_readings(
-    start: datetime | None = datetime.now(local_timezone()) - timedelta(weeks=10*52),
+    start: datetime | None = datetime.now(local_timezone()) - timedelta(weeks=10 * 52),
     end: datetime | None = datetime.now(local_timezone()),
 ) -> list[dict]:
     """
