@@ -59,6 +59,7 @@
   let isLiveView = true; // Track if user is viewing real-time data
   const MIN_DRAG_PX = 10; // Minimum pixels to drag before selection applies (prevents tap-to-zoom)
   const LIVE_THRESHOLD_SEC = 120; // Seconds within latest data to consider "live" view (2 minutes)
+  const MAX_CHART_POINTS = 2000; // Max points to render (downsampled if exceeded)
 
   // --------------------------------------------------------------------------
   // Loading State Helpers
@@ -73,6 +74,83 @@
     isLoading = false;
     if (chartLoading) chartLoading.classList.add("hidden");
     statElements.forEach(el => el.classList.remove("skeleton"));
+  }
+
+  // --------------------------------------------------------------------------
+  // Data Downsampling (Largest-Triangle-Three-Buckets algorithm)
+  // --------------------------------------------------------------------------
+  /**
+   * Downsample data using LTTB algorithm to preserve peaks while reducing point count.
+   * This prevents rendering performance issues with millions of data points.
+   */
+  function downsampleLTTB(xVals, yVals, threshold = MAX_CHART_POINTS) {
+    if (xVals.length <= threshold) {
+      return { xVals, yVals };
+    }
+    
+    const bucketSize = (xVals.length - 2) / (threshold - 2);
+    const downsampled_x = [xVals[0]];
+    const downsampled_y = [yVals[0]];
+    
+    let avgRangeStart = Math.floor(bucketSize) + 1;
+    
+    for (let i = 0; i < threshold - 2; i++) {
+      const rangeStart = Math.floor((i + 1) * bucketSize) + 1;
+      const rangeEnd = Math.floor((i + 2) * bucketSize) + 1;
+      
+      const avgRangeEnd = Math.min(rangeEnd, xVals.length);
+      const avgX = (xVals[avgRangeEnd - 1] + xVals[rangeStart]) / 2;
+      
+      let avgY = 0;
+      let count = 0;
+      for (let j = rangeStart; j < avgRangeEnd; j++) {
+        if (yVals[j] != null && Number.isFinite(yVals[j])) {
+          avgY += yVals[j];
+          count++;
+        }
+      }
+      avgY = count > 0 ? avgY / count : null;
+      
+      // Find the point with the largest triangle area
+      let maxArea = -1;
+      let maxAreaIdx = -1;
+      const pointAX = downsampled_x[downsampled_x.length - 1];
+      const pointAY = downsampled_y[downsampled_y.length - 1];
+      
+      for (let j = rangeStart; j < avgRangeEnd; j++) {
+        if (yVals[j] == null || !Number.isFinite(yVals[j])) continue;
+        
+        // Calculate triangle area between previous point, current point, and average of next bucket
+        const pointBX = xVals[j];
+        const pointBY = yVals[j];
+        const pointCX = avgX;
+        const pointCY = avgY;
+        
+        // Triangle area = 0.5 * |x1(y2 - y3) + x2(y3 - y1) + x3(y1 - y2)|
+        const area = Math.abs(
+          (pointAX * (pointBY - pointCY) +
+            pointBX * (pointCY - pointAY) +
+            pointCX * (pointAY - pointBY)) / 2
+        );
+        
+        if (area > maxArea) {
+          maxArea = area;
+          maxAreaIdx = j;
+        }
+      }
+      
+      if (maxAreaIdx !== -1) {
+        downsampled_x.push(xVals[maxAreaIdx]);
+        downsampled_y.push(yVals[maxAreaIdx]);
+      }
+      
+      avgRangeStart = avgRangeEnd;
+    }
+    
+    downsampled_x.push(xVals[xVals.length - 1]);
+    downsampled_y.push(yVals[yVals.length - 1]);
+    
+    return { xVals: downsampled_x, yVals: downsampled_y };
   }
 
   // --------------------------------------------------------------------------
@@ -410,9 +488,21 @@
         }
       }
       
-      const newXVals = mapped.map((m) => Math.floor(m[0] / 1000));
-      const newYVals = mapped.map((m) => m[1]);
-      const newEVals = rows.map((r) => r.e ?? null);
+      // Filter out rows where power is null/undefined to prevent zeros and line breaks
+      // Keep track of which original indices are valid for energy values
+      const validIndices = [];
+      const newXVals = [];
+      const newYVals = [];
+      const newEVals = [];
+      
+      for (let i = 0; i < mapped.length; i++) {
+        if (mapped[i][1] != null && Number.isFinite(mapped[i][1])) {
+          validIndices.push(i);
+          newXVals.push(Math.floor(mapped[i][0] / 1000));
+          newYVals.push(mapped[i][1]);
+          newEVals.push(rows[i].e ?? null);
+        }
+      }
       
       if (incremental && xVals.length > 0) {
         // Append only new data points (avoid duplicates)
@@ -437,8 +527,10 @@
         }
       } else {
         // Full replacement (initial load or explicit refresh)
-        xVals = newXVals;
-        yVals = newYVals;
+        // Apply downsampling if dataset is large
+        const downsampled = downsampleLTTB(newXVals, newYVals, MAX_CHART_POINTS);
+        xVals = downsampled.xVals;
+        yVals = downsampled.yVals;
         eVals = newEVals;
       }
       
@@ -835,6 +927,14 @@
       hideLoading();
       loadCostFromStorage();
       updatePeriodSummaries();
+      
+      // Auto-apply default selection (entire loaded dataset) on initial load
+      if (xVals.length > 0) {
+        const startMs = xVals[0] * 1000;
+        const endMs = xVals[xVals.length - 1] * 1000;
+        applySelectionRange(startMs, endMs, false); // false = don't clamp to data (we're using all of it)
+      }
+      
       poll();
     })
     .catch((e) => {

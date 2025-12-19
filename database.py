@@ -131,7 +131,7 @@ def log_db_health_check():
 
 
 def get_readings(
-    start: datetime | None = datetime.now(local_timezone()) - timedelta(weeks=10 * 52),
+    start: datetime | None = datetime.now(local_timezone()) - timedelta(weeks=1),
     end: datetime | None = datetime.now(local_timezone()),
 ) -> list[dict]:
     """
