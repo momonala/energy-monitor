@@ -21,7 +21,7 @@ def timed(func):
         args_str = ", ".join(repr(a) for a in args) if args else ""
         kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items()) if kwargs else ""
         params = ", ".join(filter(None, [args_str, kwargs_str])) or "no args"
-        logger.info(f"[{func.__name__}]({params}) completed in {elapsed_ms:.1f}ms")
+        logger.debug(f"[{func.__name__}]({params}) completed in {elapsed_ms:.1f}ms")
         return result
 
     return wrapper
