@@ -36,6 +36,9 @@ def parse_start_from_commit(message: str) -> str | None:
 
 
 def commit_db_if_changed():
+    run_command(["cp", FILE_TO_COMMIT, f"{FILE_TO_COMMIT}.bk"])
+    logger.info(f"Copied {FILE_TO_COMMIT} to {FILE_TO_COMMIT}.bk")
+
     diff = run_command(["git", "diff", FILE_TO_COMMIT])
     if not diff:
         logger.info("No changes. Skipping commit.")
@@ -69,5 +72,4 @@ def commit_db_if_changed():
         log_action = f"New auto-backup commit created with bounds {start_time}-{now_str}."
 
     run_command(push_args)
-    run_command(["cp", FILE_TO_COMMIT, f"{FILE_TO_COMMIT}.bk"])
     logger.info(log_action)
