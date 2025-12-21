@@ -18,6 +18,7 @@
   --color-avg: rgb(168, 85, 247);
   --color-avg-light: rgb(216, 180, 254);
   --color-rolling-avg: rgb(96, 165, 250);
+  --color-daily-energy: rgb(255, 220, 50);
   --color-border: rgba(255, 255, 255, 0.06);
   --color-border-hover: rgba(255, 255, 255, 0.22);
 
@@ -371,6 +372,7 @@ body {
 .text-avg { color: var(--color-avg); }
 .text-avg-light { color: var(--color-avg-light); }
 .text-rolling-avg { color: var(--color-rolling-avg); }
+.text-daily-energy { color: var(--color-daily-energy); }
 
 /* --------------------------------------------------------------------------
    8. uPlot Overrides

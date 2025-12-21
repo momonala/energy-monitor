@@ -2,12 +2,17 @@ import logging
 
 import requests
 
+import sys
 from values import TELEGRAM_API_TOKEN
 from values import TELEGRAM_CHAT_ID
 
 
-def report_missing_data_to_telegram() -> None:
+def report_missing_data_to_telegram(message: str) -> None:
     """Send an error message to a Telegram chat."""
+
+    # if running on mac, return 
+    if sys.platform == "darwin":
+        return
 
     # Truncate full_status if too long - keep the END since errors are usually there
     message = f"""⚠️⚡️*ENERGY MONITOR:*⚡️⚠️ {message}"""

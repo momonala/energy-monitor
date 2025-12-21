@@ -23,6 +23,7 @@
   const hoverPower = document.getElementById("hover-power");
   const hoverAvgTrend = document.getElementById("hover-avg-trend");
   const hoverRollingAvg = document.getElementById("hover-rolling-avg");
+  const hoverDailyEnergy = document.getElementById("hover-daily-energy");
   // Secondary summary elements
   const statCurrentConsumption = document.getElementById("stat-current-consumption");
   const statCostRange = document.getElementById("stat-cost-range");
@@ -58,6 +59,8 @@
   let eVals = [];
   let avgVals = []; // Historical average trendline values
   let rollingAvgVals = []; // Rolling 2-day average of power
+  let dailyEnergyData = []; // Daily energy consumption data {t, kwh, is_partial}
+  let dailyEnergyVals = []; // Interpolated daily energy values aligned with xVals
   let costPerKwh = 0.3102;
   let avgDailyEnergyUsage = null; // kWh per day from historical data
   let powerScaleMode = 'auto'; // 'auto' or 'fixed' - controls power Y-axis scaling
@@ -69,108 +72,24 @@
     startPx: null,
     startMs: null,
   };
-  let pollingMs = 10000;
-  let isLoading = false;
-  let lastDataTimestamp = null; // Track the latest data point we have
-  let isLiveView = true; // Track if user is viewing real-time data
-  const MIN_DRAG_PX = 10; // Minimum pixels to drag before selection applies (prevents tap-to-zoom)
-  const LIVE_THRESHOLD_SEC = 120; // Seconds within latest data to consider "live" view (2 minutes)
-  const MAX_CHART_POINTS = 2000; // Max points to render (downsampled if exceeded)
+  const POLLING_MS = 10000;
+  const MIN_DRAG_PX = 10;
+  const LIVE_THRESHOLD_SEC = 120;
+
+  let lastDataTimestamp = null;
+  let isLiveView = true;
 
   // --------------------------------------------------------------------------
   // Loading State Helpers
   // --------------------------------------------------------------------------
   function showLoading() {
-    isLoading = true;
     if (chartLoading) chartLoading.classList.remove("hidden");
     statElements.forEach(el => el.classList.add("skeleton"));
   }
 
   function hideLoading() {
-    isLoading = false;
     if (chartLoading) chartLoading.classList.add("hidden");
     statElements.forEach(el => el.classList.remove("skeleton"));
-  }
-
-  // --------------------------------------------------------------------------
-  // Data Downsampling (Largest-Triangle-Three-Buckets algorithm)
-  // --------------------------------------------------------------------------
-  /**
-   * Downsample data using LTTB algorithm to preserve peaks while reducing point count.
-   * This prevents rendering performance issues with millions of data points.
-   * Also downsamples the corresponding eVals (energy values) to keep arrays aligned.
-   */
-  function downsampleLTTB(xVals, yVals, eVals, threshold = MAX_CHART_POINTS) {
-    if (xVals.length <= threshold) {
-      return { xVals, yVals, eVals };
-    }
-    
-    const bucketSize = (xVals.length - 2) / (threshold - 2);
-    const downsampled_x = [xVals[0]];
-    const downsampled_y = [yVals[0]];
-    const downsampled_e = [eVals[0]];
-    
-    let avgRangeStart = Math.floor(bucketSize) + 1;
-    
-    for (let i = 0; i < threshold - 2; i++) {
-      const rangeStart = Math.floor((i + 1) * bucketSize) + 1;
-      const rangeEnd = Math.floor((i + 2) * bucketSize) + 1;
-      
-      const avgRangeEnd = Math.min(rangeEnd, xVals.length);
-      const avgX = (xVals[avgRangeEnd - 1] + xVals[rangeStart]) / 2;
-      
-      let avgY = 0;
-      let count = 0;
-      for (let j = rangeStart; j < avgRangeEnd; j++) {
-        if (yVals[j] != null && Number.isFinite(yVals[j])) {
-          avgY += yVals[j];
-          count++;
-        }
-      }
-      avgY = count > 0 ? avgY / count : null;
-      
-      // Find the point with the largest triangle area
-      let maxArea = -1;
-      let maxAreaIdx = -1;
-      const pointAX = downsampled_x[downsampled_x.length - 1];
-      const pointAY = downsampled_y[downsampled_y.length - 1];
-      
-      for (let j = rangeStart; j < avgRangeEnd; j++) {
-        if (yVals[j] == null || !Number.isFinite(yVals[j])) continue;
-        
-        // Calculate triangle area between previous point, current point, and average of next bucket
-        const pointBX = xVals[j];
-        const pointBY = yVals[j];
-        const pointCX = avgX;
-        const pointCY = avgY;
-        
-        // Triangle area = 0.5 * |x1(y2 - y3) + x2(y3 - y1) + x3(y1 - y2)|
-        const area = Math.abs(
-          (pointAX * (pointBY - pointCY) +
-            pointBX * (pointCY - pointAY) +
-            pointCX * (pointAY - pointBY)) / 2
-        );
-        
-        if (area > maxArea) {
-          maxArea = area;
-          maxAreaIdx = j;
-        }
-      }
-      
-      if (maxAreaIdx !== -1) {
-        downsampled_x.push(xVals[maxAreaIdx]);
-        downsampled_y.push(yVals[maxAreaIdx]);
-        downsampled_e.push(eVals[maxAreaIdx]);
-      }
-      
-      avgRangeStart = avgRangeEnd;
-    }
-    
-    downsampled_x.push(xVals[xVals.length - 1]);
-    downsampled_y.push(yVals[yVals.length - 1]);
-    downsampled_e.push(eVals[eVals.length - 1]);
-    
-    return { xVals: downsampled_x, yVals: downsampled_y, eVals: downsampled_e };
   }
 
   // --------------------------------------------------------------------------
@@ -257,7 +176,8 @@
           auto: powerScaleMode === 'auto',
           range: powerScaleMode === 'fixed' ? [0, 2000] : undefined
         },     // power (W)
-        y2: { auto: true },    // energy (kWh)
+        y2: { auto: true },    // cumulative energy (kWh)
+        y3: { auto: true },    // daily energy (kWh)
       },
       axes: [
         {
@@ -274,44 +194,56 @@
         },
         {
           side: 1,
-          label: "kWh",
+          label: "Total kWh",
           stroke: "rgb(235, 133, 37)",
           grid: { show: false },
           scale: "y2",
+          size: 56,
+        },
+        {
+          side: 1,
+          label: "Daily kWh",
+          stroke: "rgb(255, 220, 50)",
+          grid: { show: false },
+          scale: "y3",
           size: 56,
         }
       ],
       series: [
         {},
         {
-          label: "Power",
+          label: "Live Power",
           stroke: "rgba(37, 99, 235, 1)",
           fill: "rgba(37,99,235,0.12)",
           width: 1.5,
           scale: "y",
         },
         {
-          label: "Power EMA",
+          label: "Daily Usage",
+          stroke: "rgb(255, 220, 50)",
+          width: 2,
+          scale: "y3",
+        },
+        {
+          label: "Typical Usage",
+          stroke: "rgb(168, 85, 247)",
+          width: 2,
+          scale: "y2",
+        },
+        {
+          label: "Avg Power",
           stroke: "rgb(96, 165, 250)",
           width: 1.5,
           scale: "y",
         },
         {
-          label: "Energy",
+          label: "Meter Reading",
           stroke: "rgb(235, 133, 37)",
           width: 1.5,
           scale: "y2",
-          
-        },
-        {
-          label: "Avg Trend",
-          stroke: "rgb(168, 85, 247)",
-          width: 2,
-          scale: "y2",
-          dash: [0], // Solid line
         },
       ],
-      legend: { show: false },
+      legend: { show: true, live: false },
       select: {
         show: true,
         over: true,
@@ -345,7 +277,8 @@
         ],
       },
     };
-    u = new uPlot(opts, [xVals, yVals, rollingAvgVals, eVals, avgVals], chartEl);
+    // Data order: x, power, daily, avgEnergy, avgPower, meterReading
+    u = new uPlot(opts, [xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals], chartEl);
     if (u && u.over) {
       const over = u.over;
       over.addEventListener("pointerdown", handlePointerSelectStart);
@@ -400,7 +333,7 @@
     
     if (u) {
       // Update chart data with new trendline
-      u.setData([xVals, yVals, rollingAvgVals, eVals, avgVals]);
+      u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals]);
       // Set scale AFTER setData to preserve the zoom
       u.setScale("x", { min: startMs / 1000, max: endMs / 1000 });
     }
@@ -520,6 +453,50 @@
     }
   }
 
+  /**
+   * Interpolate daily energy consumption values to align with xVals timestamps.
+   * Each point gets the daily kWh value for its corresponding day.
+   */
+  function calculateDailyEnergyVals() {
+    if (!dailyEnergyData.length || !xVals.length) {
+      dailyEnergyVals = new Array(xVals.length).fill(null);
+      return;
+    }
+
+    // Build a map of date -> daily kWh
+    const dailyMap = new Map();
+    for (const d of dailyEnergyData) {
+      const date = new Date(d.t);
+      const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      dailyMap.set(dateKey, d.kwh);
+    }
+
+    // Map each xVal timestamp to its day's kWh value
+    dailyEnergyVals = xVals.map(secTs => {
+      const date = new Date(secTs * 1000);
+      const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      return dailyMap.get(dateKey) ?? null;
+    });
+  }
+
+  /**
+   * Fetch energy summary (avg daily + daily usage) once at startup.
+   */
+  async function fetchEnergySummary() {
+    try {
+      const res = await fetch("/api/energy_summary", { cache: "no-cache" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      avgDailyEnergyUsage = data.avg_daily;
+      dailyEnergyData = data.daily;
+      console.log(`Loaded energy summary: avg=${avgDailyEnergyUsage} kWh/day, ${dailyEnergyData.length} days`);
+    } catch (e) {
+      console.error("Failed to fetch energy summary:", e);
+      avgDailyEnergyUsage = null;
+      dailyEnergyData = [];
+    }
+  }
+
   function updateChart() {
     if (!u) {
       initChart();
@@ -541,7 +518,10 @@
       calculateAvgTrendline();
     }
     
-    u.setData([xVals, yVals, rollingAvgVals, eVals, avgVals]);
+    // Calculate daily energy values aligned with chart timestamps
+    calculateDailyEnergyVals();
+    
+    u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals]);
     
     if (curMin !== null && curMax !== null && curMax > curMin && xVals.length > 0) {
       const latestDataSec = xVals[xVals.length - 1];
@@ -608,25 +588,16 @@
       let mapped = rows.map((r) => [r.t, r.p]);
       
       // If all power values are null/undefined, derive power from cumulative energy deltas
-      let usedDerived = false;
       if (mapped.length && mapped.every((pt) => pt[1] === null || pt[1] === undefined)) {
         const derived = [];
         for (let i = 1; i < rows.length; i++) {
           const a = rows[i - 1];
           const b = rows[i];
-          if (
-            a &&
-            b &&
-            a.e != null &&
-            b.e != null &&
-            typeof a.t === "number" &&
-            typeof b.t === "number" &&
-            b.t > a.t
-          ) {
+          if (a && b && a.e != null && b.e != null &&
+              typeof a.t === "number" && typeof b.t === "number" && b.t > a.t) {
             const dE_kWh = b.e - a.e;
             const dt_ms = b.t - a.t;
             if (dt_ms > 0) {
-              // Power (W) ≈ (ΔkWh / Δt_ms) * 3.6e9
               const watts = Math.max(0, (dE_kWh * 3600000000) / dt_ms);
               derived.push([b.t, watts]);
             }
@@ -634,23 +605,18 @@
         }
         if (derived.length) {
           mapped = derived;
-          usedDerived = true;
         }
       }
       
-      // Filter out rows where power is null/undefined to prevent zeros and line breaks
-      // Keep track of which original indices are valid for energy values
-      const validIndices = [];
+      // Filter out invalid power and energy values
       const newXVals = [];
       const newYVals = [];
       const newEVals = [];
       
       for (let i = 0; i < mapped.length; i++) {
         const energyVal = rows[i].e;
-        // Filter out null/undefined power AND zero/null energy values
         if (mapped[i][1] != null && Number.isFinite(mapped[i][1]) && 
             energyVal != null && Number.isFinite(energyVal) && energyVal > 0) {
-          validIndices.push(i);
           newXVals.push(Math.floor(mapped[i][0] / 1000));
           newYVals.push(mapped[i][1]);
           newEVals.push(energyVal);
@@ -778,20 +744,21 @@
       hoverPower.textContent = "";
       if (hoverAvgTrend) hoverAvgTrend.textContent = "";
       if (hoverRollingAvg) hoverRollingAvg.textContent = "";
+      if (hoverDailyEnergy) hoverDailyEnergy.textContent = "";
       return;
     }
+
     const tMs = xVals[idx] * 1000;
-    const eNow = eVals[idx];
-    const pNow = yVals[idx];
-    const rollingAvgNow = rollingAvgVals[idx];
     hoverTime.textContent = fmt.t(tMs);
-    hoverTotalEnergy.textContent = fmt.n(eNow, 2);
-    hoverPower.textContent = fmt.n(pNow, 0);
-    if (hoverRollingAvg) {
-      hoverRollingAvg.textContent = fmt.n(rollingAvgNow, 0);
+    hoverTotalEnergy.textContent = fmt.n(eVals[idx], 2);
+    hoverPower.textContent = fmt.n(yVals[idx], 0);
+
+    if (hoverDailyEnergy) {
+      const dailyKwh = dailyEnergyVals[idx];
+      hoverDailyEnergy.textContent = dailyKwh != null ? fmt.n(dailyKwh, 2) : "–";
     }
+
     if (hoverAvgTrend) {
-      // Calculate interpolated average value for hover
       if (avgDailyEnergyUsage && eVals.length > 0) {
         let startEnergy = null;
         let startTimeSec = null;
@@ -812,6 +779,10 @@
       } else {
         hoverAvgTrend.textContent = "–";
       }
+    }
+
+    if (hoverRollingAvg) {
+      hoverRollingAvg.textContent = fmt.n(rollingAvgVals[idx], 0);
     }
   }
 
@@ -1012,7 +983,7 @@
       // Recalculate trendline for full range
       calculateAvgTrendline();
       u.setScale("x", { min: xVals[0], max: xVals[xVals.length - 1] });
-      u.setData([xVals, yVals, rollingAvgVals, eVals, avgVals]);
+      u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals]);
     }
     setActiveButton(null); // Clear active state on reset
     clearSelection();
@@ -1034,7 +1005,7 @@
       }
       initChart();
       if (u && xVals.length > 0) {
-        u.setData([xVals, yVals, rollingAvgVals, eVals, avgVals]);
+        u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals]);
         // Restore current view if there's a selection
         if (selection.start && selection.end) {
           u.setScale("x", { min: selection.start / 1000, max: selection.end / 1000 });
@@ -1050,7 +1021,10 @@
       btnRefresh.textContent = "Refreshing...";
       btnRefresh.classList.add("btn-loading");
       try {
+        // Clear Python cache first, then refresh data
+        await fetch("/api/clear_cache", { cache: "no-cache" }).catch(() => {});
         await fetchReadings();
+        await fetchEnergySummary();
       } finally {
         btnRefresh.disabled = false;
         btnRefresh.textContent = originalLabel;
@@ -1091,7 +1065,7 @@
   async function poll() {
     // Use incremental update for polling (only fetch new data)
     await fetchReadings({ incremental: true });
-    setTimeout(poll, pollingMs);
+    setTimeout(poll, POLLING_MS);
   }
 
   window.addEventListener("resize", () => {
@@ -1149,8 +1123,8 @@
   showLoading();
   initChart();
   
-  // Fetch average daily energy usage first, then fetch readings
-  fetchAvgDailyEnergyUsage()
+  // Fetch energy summary once at startup, then fetch readings
+  fetchEnergySummary()
     .then(() => fetchReadings())
     .then(() => {
       hideLoading();
@@ -1169,11 +1143,10 @@
     .catch((e) => {
       console.error("Initial fetch failed:", e);
       hideLoading();
-      setTimeout(poll, pollingMs);
+      setTimeout(poll, POLLING_MS);
     });
- 
 
-function loadCostFromStorage() {
+  function loadCostFromStorage() {
   const input = document.getElementById("cost-input");
   let v = localStorage.getItem("cost_per_kwh");
   if (v != null) {
@@ -1192,89 +1165,68 @@ function loadCostFromStorage() {
       }
     });
   }
-}
+  }
 
-async function updatePeriodSummaries() {
-  const now = new Date();
-  const nowMs = now.getTime();
-  
-  // Calculate last 30 days, last 7 days, and last 1 day
-  const last30DaysMs = nowMs - (30 * 24 * 60 * 60 * 1000);
-  const last7DaysMs = nowMs - (7 * 24 * 60 * 60 * 1000);
-  const last1DayMs = nowMs - (1 * 24 * 60 * 60 * 1000);
+  async function updatePeriodSummaries() {
+    const now = new Date();
+    const nowMs = now.getTime();
+    const last30DaysMs = nowMs - (30 * 24 * 60 * 60 * 1000);
+    const last7DaysMs = nowMs - (7 * 24 * 60 * 60 * 1000);
+    const last1DayMs = nowMs - (24 * 60 * 60 * 1000);
 
-  try {
-    const [monthStats, weekStats, dayStats, latestReading] = await Promise.all([
-      fetchStats(last30DaysMs, nowMs),
-      fetchStats(last7DaysMs, nowMs),
-      fetchStats(last1DayMs, nowMs),
-      fetchLatestReading(),
-    ]);
-    
-    // Update actual values
-    if (statMonthEnergy) statMonthEnergy.textContent = fmt.n(monthStats.energy_used_kwh, 2);
-    if (statMonthCost) statMonthCost.textContent = fmt.n((monthStats.energy_used_kwh || 0) * costPerKwh, 2);
-    if (statWeekEnergy) statWeekEnergy.textContent = fmt.n(weekStats.energy_used_kwh, 2);
-    if (statWeekCost) statWeekCost.textContent = fmt.n((weekStats.energy_used_kwh || 0) * costPerKwh, 2);
-    if (statDayEnergy) statDayEnergy.textContent = fmt.n(dayStats.energy_used_kwh, 2);
-    if (statDayCost) statDayCost.textContent = fmt.n((dayStats.energy_used_kwh || 0) * costPerKwh, 2);
-    if (statCurrentConsumption) statCurrentConsumption.textContent = fmt.n(latestReading.energy_in_kwh, 2);
-    if (statTotalCost) statTotalCost.textContent = fmt.n((latestReading.energy_in_kwh || 0) * costPerKwh, 2);
-    
-    // Update historical averages
-    if (avgDailyEnergyUsage) {
-      const avg30Days = avgDailyEnergyUsage * 30;
-      const avg7Days = avgDailyEnergyUsage * 7;
-      const avg1Day = avgDailyEnergyUsage * 1;
-      
-      if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = fmt.n(avg30Days, 2);
-      if (statMonthAvgCost) statMonthAvgCost.textContent = fmt.n(avg30Days * costPerKwh, 2);
-      if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = fmt.n(avg7Days, 2);
-      if (statWeekAvgCost) statWeekAvgCost.textContent = fmt.n(avg7Days * costPerKwh, 2);
-      if (statDayAvgEnergy) statDayAvgEnergy.textContent = fmt.n(avg1Day, 2);
-      if (statDayAvgCost) statDayAvgCost.textContent = fmt.n(avg1Day * costPerKwh, 2);
-    } else {
-      if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = "–";
-      if (statMonthAvgCost) statMonthAvgCost.textContent = "–";
-      if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = "–";
-      if (statWeekAvgCost) statWeekAvgCost.textContent = "–";
-      if (statDayAvgEnergy) statDayAvgEnergy.textContent = "–";
-      if (statDayAvgCost) statDayAvgCost.textContent = "–";
+    try {
+      const [monthStats, weekStats, dayStats, latestReading] = await Promise.all([
+        fetchStats(last30DaysMs, nowMs),
+        fetchStats(last7DaysMs, nowMs),
+        fetchStats(last1DayMs, nowMs),
+        fetchLatestReading(),
+      ]);
+
+      if (statMonthEnergy) statMonthEnergy.textContent = fmt.n(monthStats.energy_used_kwh, 2);
+      if (statMonthCost) statMonthCost.textContent = fmt.n((monthStats.energy_used_kwh || 0) * costPerKwh, 2);
+      if (statWeekEnergy) statWeekEnergy.textContent = fmt.n(weekStats.energy_used_kwh, 2);
+      if (statWeekCost) statWeekCost.textContent = fmt.n((weekStats.energy_used_kwh || 0) * costPerKwh, 2);
+      if (statDayEnergy) statDayEnergy.textContent = fmt.n(dayStats.energy_used_kwh, 2);
+      if (statDayCost) statDayCost.textContent = fmt.n((dayStats.energy_used_kwh || 0) * costPerKwh, 2);
+      if (statCurrentConsumption) statCurrentConsumption.textContent = fmt.n(latestReading.energy_in_kwh, 2);
+      if (statTotalCost) statTotalCost.textContent = fmt.n((latestReading.energy_in_kwh || 0) * costPerKwh, 2);
+
+      if (avgDailyEnergyUsage) {
+        const avg30Days = avgDailyEnergyUsage * 30;
+        const avg7Days = avgDailyEnergyUsage * 7;
+        const avg1Day = avgDailyEnergyUsage;
+
+        if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = fmt.n(avg30Days, 2);
+        if (statMonthAvgCost) statMonthAvgCost.textContent = fmt.n(avg30Days * costPerKwh, 2);
+        if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = fmt.n(avg7Days, 2);
+        if (statWeekAvgCost) statWeekAvgCost.textContent = fmt.n(avg7Days * costPerKwh, 2);
+        if (statDayAvgEnergy) statDayAvgEnergy.textContent = fmt.n(avg1Day, 2);
+        if (statDayAvgCost) statDayAvgCost.textContent = fmt.n(avg1Day * costPerKwh, 2);
+      } else {
+        if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = "–";
+        if (statMonthAvgCost) statMonthAvgCost.textContent = "–";
+        if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = "–";
+        if (statWeekAvgCost) statWeekAvgCost.textContent = "–";
+        if (statDayAvgEnergy) statDayAvgEnergy.textContent = "–";
+        if (statDayAvgCost) statDayAvgCost.textContent = "–";
+      }
+    } catch (e) {
+      console.error("Failed to update period summaries:", e);
     }
-    
-  } catch (e) {
-    console.error("Failed to update period summaries:", e);
   }
-}
 
-async function fetchLatestReading() {
-  const res = await fetch(`/api/latest_reading`, { cache: "no-cache" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const body = await res.json();
-  return body;
-}
-
-async function fetchStats(startMs, endMs) {
-  const qs = new URLSearchParams({ start: String(startMs), end: String(endMs) });
-  const res = await fetch(`/api/stats?${qs.toString()}`, { cache: "no-cache" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const body = await res.json();
-  return body.stats || {};
-}
-
-async function fetchAvgDailyEnergyUsage() {
-  try {
-    const res = await fetch(`/api/avg_daily_energy_usage`, { cache: "no-cache" });
+  async function fetchLatestReading() {
+    const res = await fetch("/api/latest_reading", { cache: "no-cache" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const value = await res.json();
-    avgDailyEnergyUsage = value;
-    console.log(`Loaded average daily energy usage: ${avgDailyEnergyUsage} kWh/day`);
-  } catch (e) {
-    console.error("Failed to fetch average daily energy usage:", e);
-    avgDailyEnergyUsage = null;
+    return res.json();
   }
-}
+
+  async function fetchStats(startMs, endMs) {
+    const qs = new URLSearchParams({ start: String(startMs), end: String(endMs) });
+    const res = await fetch(`/api/stats?${qs.toString()}`, { cache: "no-cache" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+    return body.stats || {};
+  }
 
 })();
-
-

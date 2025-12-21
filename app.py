@@ -12,12 +12,14 @@ from config import SERVER_URL
 from config import TASMOTA_UI_URL
 from config import TOPIC
 from database import get_avg_daily_energy_usage
+from database import get_daily_energy_usage
 from database import get_readings
 from database import get_stats
 from database import latest_energy_reading
 from database import num_energy_readings_last_hour
 from database import num_total_energy_readings
 from helpers import parse_time_param
+from helpers import timed
 from mqtt import db_worker
 from mqtt import get_mqtt_client
 from mqtt import mqtt_loop
@@ -39,28 +41,21 @@ def index():
 
 @app.get("/api/readings")
 def api_readings():
-    """
-    Return readings as a list of {t, p, e} where:
-      - t: timestamp in ms since epoch
-      - p: power in watts
-      - e: cumulative energy in kWh
-    Query params:
-      - start: ISO string or ms since epoch (optional)
-      - end: ISO string or ms since epoch (optional)
-    """
+    """Return readings as {t, p, e} for timestamp, power, energy."""
     start = parse_time_param(request.args.get("start"))
     end = parse_time_param(request.args.get("end"))
     data = get_readings(start=start, end=end)
     return jsonify(data)
 
 
-@app.get("/api/avg_daily_energy_usage")
-def avg_daily_energy_usage():
-    """
-    Return the average daily energy usage over the last year from cumulative readings.
-    """
-    data = get_readings()
-    return jsonify(get_avg_daily_energy_usage(data))
+@app.get("/api/energy_summary")
+def energy_summary():
+    """Return avg daily and per-day energy usage."""
+    data = get_readings(start=None, end=None)
+    return jsonify({
+        "avg_daily": get_avg_daily_energy_usage(data),
+        "daily": get_daily_energy_usage(data),
+    })
 
 
 @app.get("/api/latest_reading")
@@ -71,12 +66,7 @@ def api_latest_reading():
 
 @app.get("/api/stats")
 def api_stats():
-    """
-    Compute stats between [start, end].
-    Query params:
-      - start: ISO string or ms since epoch (required)
-      - end: ISO string or ms since epoch (required)
-    """
+    """Compute stats between [start, end]."""
     start = parse_time_param(request.args.get("start"))
     end = parse_time_param(request.args.get("end"))
     if start is None or end is None:
@@ -84,13 +74,11 @@ def api_stats():
     if end < start:
         start, end = end, start
     stats = get_stats(start=start, end=end)
-    return jsonify(
-        {
-            "start": int(start.timestamp() * 1000),
-            "end": int(end.timestamp() * 1000),
-            "stats": stats,
-        }
-    )
+    return jsonify({
+        "start": int(start.timestamp() * 1000),
+        "end": int(end.timestamp() * 1000),
+        "stats": stats,
+    })
 
 
 def start_threads():
@@ -103,6 +91,15 @@ def start_threads():
     mqtt_thread.start()
     schedule_thread.start()
     logger.info("Initialized threads for MQTT and schedule")
+
+
+@app.get("/api/clear_cache")
+def clear_cache():
+    """Clear Python LRU cache for get_readings. Visit in browser or call via curl."""
+    cache_info = get_readings.cache_info()
+    get_readings.cache_clear()
+    logger.info(f"Cleared cache: {cache_info}")
+    return jsonify({"cleared": True, "previous": {"hits": cache_info.hits, "misses": cache_info.misses, "size": cache_info.currsize}})
 
 
 @app.get("/status")
