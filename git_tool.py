@@ -2,17 +2,22 @@ import logging
 import re
 import subprocess
 from datetime import datetime
+from config import DATABASE_URL
+from urllib.parse import urlparse
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-FILE_TO_COMMIT = "data/energy.db"
 BRANCH = "main"
 COMMIT_PREFIX = "[DB-AUTO-BACKUP]"
 DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
 RANGE_RE = re.compile(
     r"(?P<start>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})-" r"(?P<end>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
 )
+
+database_path = urlparse(DATABASE_URL).path.lstrip("/")
+file_to_commit = f"{database_path}.bk"
 
 
 def run_command(cmd):
@@ -36,15 +41,15 @@ def parse_start_from_commit(message: str) -> str | None:
 
 
 def commit_db_if_changed():
-    run_command(["cp", FILE_TO_COMMIT, f"{FILE_TO_COMMIT}.bk"])
-    logger.info(f"Copied {FILE_TO_COMMIT} to {FILE_TO_COMMIT}.bk")
+    run_command(["cp", database_path, file_to_commit])
+    logger.info(f"Copied {database_path} to {file_to_commit}")
 
-    diff = run_command(["git", "diff", FILE_TO_COMMIT])
+    diff = run_command(["git", "diff", file_to_commit])
     if not diff:
         logger.info("No changes. Skipping commit.")
         return
 
-    run_command(["git", "add", FILE_TO_COMMIT])
+    run_command(["git", "add", file_to_commit])
     now_str = format_datetime(datetime.now())
     last_commit_msg = ""
     start_time = now_str
@@ -73,3 +78,6 @@ def commit_db_if_changed():
 
     run_command(push_args)
     logger.info(log_action)
+
+if __name__ == "__main__":
+    commit_db_if_changed()
