@@ -3,3 +3,4 @@
 __pycache__/
 tmp/
 values.py
+data/energy.db

@@ -30,6 +30,7 @@
   const hoverAvgTrend = document.getElementById("hover-avg-trend");
   const hoverRollingAvg = document.getElementById("hover-rolling-avg");
   const hoverDailyEnergy = document.getElementById("hover-daily-energy");
+  const hoverTypicalDailyEnergy = document.getElementById("hover-typical-daily-energy");
   // Secondary summary elements
   const statCurrentConsumption = document.getElementById("stat-current-consumption");
   const statCostRange = document.getElementById("stat-cost-range");
@@ -67,6 +68,7 @@
   let rollingAvgVals = []; // Rolling 2-day average of power
   let dailyEnergyData = []; // Daily energy consumption data {t, kwh, is_partial}
   let dailyEnergyVals = []; // Interpolated daily energy values aligned with xVals
+  let typicalDailyEnergyVals = []; // Typical daily energy values based on avgDailyEnergyUsage
   let costPerKwh = 0.3102;
   let avgDailyEnergyUsage = null; // kWh per day from historical data
   let powerScaleMode = 'auto'; // 'auto' or 'fixed' - controls power Y-axis scaling
@@ -77,6 +79,7 @@
     3: true, // Typical Usage
     4: true, // Avg Power
     5: true, // Meter Reading
+    6: true, // Typical Daily Usage
   };
 
   let selection = { start: null, end: null };
@@ -240,7 +243,7 @@
         },
         {
           label: "Typical Usage",
-          stroke: "rgb(168, 85, 247)",
+          stroke: "rgba(168, 85, 247, 0.5)",
           width: 2,
           scale: "y2",
         },
@@ -255,6 +258,12 @@
           stroke: "rgb(235, 133, 37)",
           width: 1.5,
           scale: "y2",
+        },
+        {
+          label: "Typical Daily Usage",
+          stroke: "rgba(168, 85, 247, 0.5)",
+          width: 2,
+          scale: "y3",
         },
       ],
       legend: { show: false, live: false },
@@ -291,8 +300,8 @@
         ],
       },
     };
-    // Data order: x, power, daily, avgEnergy, avgPower, meterReading
-    u = new uPlot(opts, [xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals], chartEl);
+    // Data order: x, power, daily, avgEnergy, avgPower, meterReading, typicalDaily
+    u = new uPlot(opts, [xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals, typicalDailyEnergyVals], chartEl);
     
     // Set initial series visibility based on tracked state
     if (u && u.series) {
@@ -358,7 +367,7 @@
     
     if (u) {
       // Update chart data with new trendline
-      u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals]);
+      u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
       // Set scale AFTER setData to preserve the zoom
       u.setScale("x", { min: startMs / 1000, max: endMs / 1000 });
     }
@@ -505,6 +514,20 @@
   }
 
   /**
+   * Calculate typical daily energy values based on avgDailyEnergyUsage.
+   * Each point gets the typical daily kWh value (avgDailyEnergyUsage).
+   */
+  function calculateTypicalDailyEnergyVals() {
+    if (!avgDailyEnergyUsage || !xVals.length) {
+      typicalDailyEnergyVals = new Array(xVals.length).fill(null);
+      return;
+    }
+
+    // Each point gets the same typical daily value
+    typicalDailyEnergyVals = new Array(xVals.length).fill(avgDailyEnergyUsage);
+  }
+
+  /**
    * Fetch energy summary (avg daily + daily usage) once at startup.
    */
   async function fetchEnergySummary() {
@@ -546,7 +569,10 @@
     // Calculate daily energy values aligned with chart timestamps
     calculateDailyEnergyVals();
     
-    u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals]);
+    // Calculate typical daily energy values
+    calculateTypicalDailyEnergyVals();
+    
+    u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
     
     if (curMin !== null && curMax !== null && curMax > curMin && xVals.length > 0) {
       const latestDataSec = xVals[xVals.length - 1];
@@ -770,6 +796,7 @@
       if (hoverAvgTrend) hoverAvgTrend.textContent = "";
       if (hoverRollingAvg) hoverRollingAvg.textContent = "";
       if (hoverDailyEnergy) hoverDailyEnergy.textContent = "";
+      if (hoverTypicalDailyEnergy) hoverTypicalDailyEnergy.textContent = "";
       return;
     }
 
@@ -808,6 +835,11 @@
 
     if (hoverRollingAvg) {
       hoverRollingAvg.textContent = fmt.n(rollingAvgVals[idx], 0);
+    }
+
+    if (hoverTypicalDailyEnergy) {
+      const typicalDailyKwh = typicalDailyEnergyVals[idx];
+      hoverTypicalDailyEnergy.textContent = typicalDailyKwh != null ? fmt.n(typicalDailyKwh, 2) : "–";
     }
   }
 
@@ -1008,7 +1040,7 @@
       // Recalculate trendline for full range
       calculateAvgTrendline();
       u.setScale("x", { min: xVals[0], max: xVals[xVals.length - 1] });
-      u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals]);
+      u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
     }
     setActiveButton(null); // Clear active state on reset
     clearSelection();
@@ -1030,7 +1062,7 @@
       }
       initChart();
       if (u && xVals.length > 0) {
-        u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals]);
+        u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
         // Restore current view if there's a selection
         if (selection.start && selection.end) {
           u.setScale("x", { min: selection.start / 1000, max: selection.end / 1000 });
@@ -1047,7 +1079,7 @@
   }
 
   // Trace toggle button handlers
-  function setupTraceToggle(btn, seriesIdx) {
+  function setupTraceToggle(btn, seriesIdx, additionalSeriesIdx = null) {
     if (!btn) return;
     btn.addEventListener("click", () => {
       if (!u) return;
@@ -1058,6 +1090,14 @@
       // Update uPlot series visibility
       if (u.series && u.series[seriesIdx]) {
         u.setSeries(seriesIdx, { show: newVisibility });
+      }
+      
+      // If there's an additional series (e.g., typical daily), toggle it too
+      if (additionalSeriesIdx !== null) {
+        seriesVisibility[additionalSeriesIdx] = newVisibility;
+        if (u.series && u.series[additionalSeriesIdx]) {
+          u.setSeries(additionalSeriesIdx, { show: newVisibility });
+        }
       }
       
       // Update button appearance
@@ -1071,7 +1111,7 @@
 
   setupTraceToggle(btnTogglePower, 1);
   setupTraceToggle(btnToggleDaily, 2);
-  setupTraceToggle(btnToggleTypical, 3);
+  setupTraceToggle(btnToggleTypical, 3, 6); // Toggle both typical usage (3) and typical daily (6)
   setupTraceToggle(btnToggleAvgPower, 4);
   setupTraceToggle(btnToggleMeter, 5);
   if (btnRefresh) {
