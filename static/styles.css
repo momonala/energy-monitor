@@ -181,18 +181,19 @@ body {
 .hover-overlay {
   position: absolute;
   top: var(--space-sm);
-  left: 130px;
-  background: rgba(17, 24, 39, 0.92);
+  left: 95px;
+  background: rgba(17, 24, 39, 0.7);
   border: 1px solid var(--color-border);
   border-radius: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
+  padding: var(--space-xs) var(--space-sm);
   box-shadow: var(--shadow);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text);
   backdrop-filter: blur(6px);
   pointer-events: none;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  opacity: 0.95;
 }
 
 .hover-row {
@@ -206,23 +207,34 @@ body {
 .hover-row-new {
   display: grid;
   grid-template-columns: auto 1fr;
-  column-gap: var(--space-md);
+  column-gap: var(--space-sm);
   align-items: baseline;
-  line-height: 1.8;
+  line-height: 1.5;
 }
 
 .hover-label {
   font-weight: 600;
-  min-width: 140px;
+  min-width: 120px;
 }
 
 /* Toolbar - anchored to bottom */
 .toolbar {
   flex-shrink: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--space-sm);
   padding-top: var(--space-md);
+}
+
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.toolbar-row .btn {
+  flex: 1;
+  min-width: 0;
 }
 
 .btn {
@@ -230,7 +242,7 @@ body {
   color: var(--color-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--border-radius-sm);
-  padding: var(--space-sm) var(--space-md);
+  padding: 5px var(--space-md);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -252,6 +264,51 @@ body {
   border-color: rgba(96, 165, 250, 0.5);
   color: #60a5fa;
   font-weight: 600;
+}
+
+/* Trace toggle buttons with colored text only */
+.btn-trace-power {
+  color: rgba(96, 165, 250, 0.9);
+}
+
+.btn-trace-power:hover {
+  color: #60a5fa;
+}
+
+.btn-trace-daily {
+  color: rgba(255, 220, 50, 0.9);
+}
+
+.btn-trace-daily:hover {
+  color: rgb(255, 220, 50);
+}
+
+.btn-trace-typical {
+  color: rgba(216, 180, 254, 0.9);
+}
+
+.btn-trace-typical:hover {
+  color: rgb(216, 180, 254);
+}
+
+.btn-trace-avg-power {
+  color: rgba(96, 165, 250, 0.9);
+}
+
+.btn-trace-avg-power:hover {
+  color: #60a5fa;
+}
+
+.btn-trace-meter {
+  color: rgba(235, 133, 37, 0.9);
+}
+
+.btn-trace-meter:hover {
+  color: rgb(235, 133, 37);
+}
+
+.btn-trace.hidden {
+  opacity: 0.3;
 }
 
 .btn-loading {

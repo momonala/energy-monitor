@@ -17,6 +17,12 @@
   const btnLastHour = document.getElementById("btn-last-hour");
   const btnLastDay = document.getElementById("btn-last-day");
   const btnRefresh = document.getElementById("btn-refresh");
+  // Trace toggle buttons
+  const btnTogglePower = document.getElementById("btn-toggle-power");
+  const btnToggleDaily = document.getElementById("btn-toggle-daily");
+  const btnToggleTypical = document.getElementById("btn-toggle-typical");
+  const btnToggleAvgPower = document.getElementById("btn-toggle-avg-power");
+  const btnToggleMeter = document.getElementById("btn-toggle-meter");
   // Hover overlay elements
   const hoverTime = document.getElementById("hover-time");
   const hoverTotalEnergy = document.getElementById("hover-total-energy");
@@ -64,6 +70,14 @@
   let costPerKwh = 0.3102;
   let avgDailyEnergyUsage = null; // kWh per day from historical data
   let powerScaleMode = 'auto'; // 'auto' or 'fixed' - controls power Y-axis scaling
+  // Track series visibility: series index -> visible (true) or hidden (false)
+  const seriesVisibility = {
+    1: true, // Live Power
+    2: true, // Daily Usage
+    3: true, // Typical Usage
+    4: true, // Avg Power
+    5: true, // Meter Reading
+  };
 
   let selection = { start: null, end: null };
   const pointerSelect = {
@@ -243,7 +257,7 @@
           scale: "y2",
         },
       ],
-      legend: { show: true, live: false },
+      legend: { show: false, live: false },
       select: {
         show: true,
         over: true,
@@ -279,6 +293,17 @@
     };
     // Data order: x, power, daily, avgEnergy, avgPower, meterReading
     u = new uPlot(opts, [xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals], chartEl);
+    
+    // Set initial series visibility based on tracked state
+    if (u && u.series) {
+      Object.keys(seriesVisibility).forEach(seriesIdx => {
+        const idx = parseInt(seriesIdx);
+        if (u.series[idx]) {
+          u.setSeries(idx, { show: seriesVisibility[idx] });
+        }
+      });
+    }
+    
     if (u && u.over) {
       const over = u.over;
       over.addEventListener("pointerdown", handlePointerSelectStart);
@@ -1010,9 +1035,45 @@
         if (selection.start && selection.end) {
           u.setScale("x", { min: selection.start / 1000, max: selection.end / 1000 });
         }
+        // Restore series visibility
+        Object.keys(seriesVisibility).forEach(seriesIdx => {
+          const idx = parseInt(seriesIdx);
+          if (u && u.series && u.series[idx]) {
+            u.setSeries(idx, { show: seriesVisibility[idx] });
+          }
+        });
       }
     });
   }
+
+  // Trace toggle button handlers
+  function setupTraceToggle(btn, seriesIdx) {
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      if (!u) return;
+      const isVisible = seriesVisibility[seriesIdx] !== false;
+      const newVisibility = !isVisible;
+      seriesVisibility[seriesIdx] = newVisibility;
+      
+      // Update uPlot series visibility
+      if (u.series && u.series[seriesIdx]) {
+        u.setSeries(seriesIdx, { show: newVisibility });
+      }
+      
+      // Update button appearance
+      if (newVisibility) {
+        btn.classList.remove("hidden");
+      } else {
+        btn.classList.add("hidden");
+      }
+    });
+  }
+
+  setupTraceToggle(btnTogglePower, 1);
+  setupTraceToggle(btnToggleDaily, 2);
+  setupTraceToggle(btnToggleTypical, 3);
+  setupTraceToggle(btnToggleAvgPower, 4);
+  setupTraceToggle(btnToggleMeter, 5);
   if (btnRefresh) {
     btnRefresh.addEventListener("click", async () => {
       if (btnRefresh.disabled) return;
