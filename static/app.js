@@ -27,7 +27,6 @@
   const hoverTime = document.getElementById("hover-time");
   const hoverTotalEnergy = document.getElementById("hover-total-energy");
   const hoverPower = document.getElementById("hover-power");
-  const hoverAvgTrend = document.getElementById("hover-avg-trend");
   const hoverRollingAvg = document.getElementById("hover-rolling-avg");
   const hoverDailyEnergy = document.getElementById("hover-daily-energy");
   const hoverTypicalDailyEnergy = document.getElementById("hover-typical-daily-energy");
@@ -64,7 +63,6 @@
   let xVals = [];
   let yVals = [];
   let eVals = [];
-  let avgVals = []; // Historical average trendline values
   let rollingAvgVals = []; // Rolling 2-day average of power
   let dailyEnergyData = []; // Daily energy consumption data {t, kwh, is_partial}
   let dailyEnergyVals = []; // Interpolated daily energy values aligned with xVals
@@ -76,7 +74,6 @@
   const seriesVisibility = {
     1: true, // Live Power
     2: true, // Daily Usage
-    3: true, // Typical Usage
     4: true, // Avg Power
     5: true, // Meter Reading
     6: true, // Typical Daily Usage
@@ -242,12 +239,6 @@
           scale: "y3",
         },
         {
-          label: "Typical Usage",
-          stroke: "rgba(168, 85, 247, 0.5)",
-          width: 2,
-          scale: "y2",
-        },
-        {
           label: "Avg Power",
           stroke: "rgb(96, 165, 250)",
           width: 1.5,
@@ -300,8 +291,8 @@
         ],
       },
     };
-    // Data order: x, power, daily, avgEnergy, avgPower, meterReading, typicalDaily
-    u = new uPlot(opts, [xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals, typicalDailyEnergyVals], chartEl);
+    // Data order: x, power, daily, avgPower, meterReading, typicalDaily
+    u = new uPlot(opts, [xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals], chartEl);
     
     // Set initial series visibility based on tracked state
     if (u && u.series) {
@@ -362,12 +353,9 @@
     selection = { start: startMs, end: endMs };
     clearPointerSelectionOverlay();
     
-    // Recalculate the average trendline to start from the selection's start point
-    calculateAvgTrendline(startMs, endMs);
-    
     if (u) {
-      // Update chart data with new trendline
-      u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
+      // Update chart data
+      u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
       // Set scale AFTER setData to preserve the zoom
       u.setScale("x", { min: startMs / 1000, max: endMs / 1000 });
     }
@@ -426,64 +414,6 @@
         // If current value is null but we have an EMA, keep the last EMA
         rollingAvgVals[i] = ema;
       }
-    }
-  }
-
-  /**
-   * Calculate the historical average trendline based on avgDailyEnergyUsage.
-   * The trendline starts at the same point as the energy data and follows the average slope.
-   * If a selection range is provided, the trendline starts from the first point in that range.
-   */
-  function calculateAvgTrendline(selectionStartMs = null, selectionEndMs = null) {
-    if (!avgDailyEnergyUsage || xVals.length === 0 || eVals.length === 0) {
-      avgVals = [];
-      return;
-    }
-    
-    // Determine the range to use for the trendline
-    let rangeStartIdx = 0;
-    let rangeEndIdx = xVals.length - 1;
-    
-    if (selectionStartMs !== null && selectionEndMs !== null) {
-      const startSec = Math.floor(selectionStartMs / 1000);
-      const endSec = Math.floor(selectionEndMs / 1000);
-      
-      // Find the first index within the selection
-      while (rangeStartIdx < xVals.length && xVals[rangeStartIdx] < startSec) {
-        rangeStartIdx++;
-      }
-      
-      // Find the last index within the selection
-      while (rangeEndIdx >= 0 && xVals[rangeEndIdx] > endSec) {
-        rangeEndIdx--;
-      }
-    }
-    
-    // Find the first valid energy reading in the range to use as starting point
-    let startEnergy = null;
-    let startIdx = rangeStartIdx;
-    for (let i = rangeStartIdx; i <= rangeEndIdx && i < eVals.length; i++) {
-      if (eVals[i] != null && Number.isFinite(eVals[i])) {
-        startEnergy = eVals[i];
-        startIdx = i;
-        break;
-      }
-    }
-    
-    if (startEnergy === null) {
-      avgVals = [];
-      return;
-    }
-    
-    // Create trendline - fill all points to draw a continuous line
-    // The line is mathematically just two points (start and end), but we need
-    // to fill intermediate values for uPlot to render it
-    const startTimeSec = xVals[startIdx];
-    avgVals = new Array(xVals.length).fill(null);
-    
-    for (let i = startIdx; i < xVals.length; i++) {
-      const durationDays = (xVals[i] - startTimeSec) / 86400; // seconds to days
-      avgVals[i] = startEnergy + (avgDailyEnergyUsage * durationDays);
     }
   }
 
@@ -559,20 +489,13 @@
     // Calculate rolling average
     calculateRollingAvg();
     
-    // Calculate average trendline based on current selection if available
-    if (selection.start && selection.end) {
-      calculateAvgTrendline(selection.start, selection.end);
-    } else {
-      calculateAvgTrendline();
-    }
-    
     // Calculate daily energy values aligned with chart timestamps
     calculateDailyEnergyVals();
     
     // Calculate typical daily energy values
     calculateTypicalDailyEnergyVals();
     
-    u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
+    u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
     
     if (curMin !== null && curMax !== null && curMax > curMin && xVals.length > 0) {
       const latestDataSec = xVals[xVals.length - 1];
@@ -793,7 +716,6 @@
       hoverTime.textContent = "";
       hoverTotalEnergy.textContent = "";
       hoverPower.textContent = "";
-      if (hoverAvgTrend) hoverAvgTrend.textContent = "";
       if (hoverRollingAvg) hoverRollingAvg.textContent = "";
       if (hoverDailyEnergy) hoverDailyEnergy.textContent = "";
       if (hoverTypicalDailyEnergy) hoverTypicalDailyEnergy.textContent = "";
@@ -808,29 +730,6 @@
     if (hoverDailyEnergy) {
       const dailyKwh = dailyEnergyVals[idx];
       hoverDailyEnergy.textContent = dailyKwh != null ? fmt.n(dailyKwh, 2) : "–";
-    }
-
-    if (hoverAvgTrend) {
-      if (avgDailyEnergyUsage && eVals.length > 0) {
-        let startEnergy = null;
-        let startTimeSec = null;
-        for (let i = 0; i < eVals.length; i++) {
-          if (eVals[i] != null && Number.isFinite(eVals[i])) {
-            startEnergy = eVals[i];
-            startTimeSec = xVals[i];
-            break;
-          }
-        }
-        if (startEnergy !== null && startTimeSec !== null) {
-          const durationDays = (xVals[idx] - startTimeSec) / 86400;
-          const interpolatedAvg = startEnergy + (avgDailyEnergyUsage * durationDays);
-          hoverAvgTrend.textContent = fmt.n(interpolatedAvg, 2);
-        } else {
-          hoverAvgTrend.textContent = "–";
-        }
-      } else {
-        hoverAvgTrend.textContent = "–";
-      }
     }
 
     if (hoverRollingAvg) {
@@ -1037,10 +936,8 @@
 
   btnReset.addEventListener("click", () => {
     if (u && xVals.length) {
-      // Recalculate trendline for full range
-      calculateAvgTrendline();
       u.setScale("x", { min: xVals[0], max: xVals[xVals.length - 1] });
-      u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
+      u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
     }
     setActiveButton(null); // Clear active state on reset
     clearSelection();
@@ -1062,7 +959,7 @@
       }
       initChart();
       if (u && xVals.length > 0) {
-        u.setData([xVals, yVals, dailyEnergyVals, avgVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
+        u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
         // Restore current view if there's a selection
         if (selection.start && selection.end) {
           u.setScale("x", { min: selection.start / 1000, max: selection.end / 1000 });
@@ -1111,7 +1008,7 @@
 
   setupTraceToggle(btnTogglePower, 1);
   setupTraceToggle(btnToggleDaily, 2);
-  setupTraceToggle(btnToggleTypical, 3, 6); // Toggle both typical usage (3) and typical daily (6)
+  setupTraceToggle(btnToggleTypical, 6); // Toggle typical daily usage (series 6)
   setupTraceToggle(btnToggleAvgPower, 4);
   setupTraceToggle(btnToggleMeter, 5);
   if (btnRefresh) {
