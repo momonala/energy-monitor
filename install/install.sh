@@ -1,7 +1,6 @@
 service_name="energy-monitor"
 service_name_underscore="energy_monitor"
 service_port=5008
-python_version="3.12"
 
 set -e  # Exit immediately if a command exits with a non-zero status
 
@@ -10,24 +9,17 @@ is_mac() {
     [ "$(uname)" == "Darwin" ]
 }
 
-echo "✅ Creating conda environment: $service_name_underscore with Python $python_version"
-if ! conda env list | grep -q "^$service_name_underscore\s"; then
-    conda create -n $service_name_underscore python=$python_version -y
+echo "✅ Installing uv (Python package manager)"
+if ! command -v uv &> /dev/null; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 else
-    echo "✅ Conda environment '$service_name_underscore' already exists. Skipping creation."
+    echo "✅ uv is already installed. Updating to latest version."
+    uv self update
 fi
 
-echo "✅ Activating conda environment: $service_name_underscore"
-if is_mac; then
-    source /Users/mnalavadi/miniconda3/etc/profile.d/conda.sh
-else
-    source /home/mnalavadi/miniconda3/etc/profile.d/conda.sh
-fi
-conda activate $service_name_underscore
-
-echo "✅ Installing required Python packages"
-pip install -U poetry
-poetry install --no-root
+echo "✅ Installing project dependencies with uv"
+uv sync
 
 # if running on mac, exit now
 if is_mac; then

@@ -19,7 +19,6 @@ from database import latest_energy_reading
 from database import num_energy_readings_last_hour
 from database import num_total_energy_readings
 from helpers import parse_time_param
-from helpers import timed
 from mqtt import db_worker
 from mqtt import get_mqtt_client
 from mqtt import mqtt_loop
@@ -52,10 +51,12 @@ def api_readings():
 def energy_summary():
     """Return avg daily and per-day energy usage."""
     data = get_readings(start=None, end=None)
-    return jsonify({
-        "avg_daily": get_avg_daily_energy_usage(data),
-        "daily": get_daily_energy_usage(data),
-    })
+    return jsonify(
+        {
+            "avg_daily": get_avg_daily_energy_usage(data),
+            "daily": get_daily_energy_usage(data),
+        }
+    )
 
 
 @app.get("/api/latest_reading")
@@ -74,11 +75,13 @@ def api_stats():
     if end < start:
         start, end = end, start
     stats = get_stats(start=start, end=end)
-    return jsonify({
-        "start": int(start.timestamp() * 1000),
-        "end": int(end.timestamp() * 1000),
-        "stats": stats,
-    })
+    return jsonify(
+        {
+            "start": int(start.timestamp() * 1000),
+            "end": int(end.timestamp() * 1000),
+            "stats": stats,
+        }
+    )
 
 
 def start_threads():
@@ -99,7 +102,12 @@ def clear_cache():
     cache_info = get_readings.cache_info()
     get_readings.cache_clear()
     logger.info(f"Cleared cache: {cache_info}")
-    return jsonify({"cleared": True, "previous": {"hits": cache_info.hits, "misses": cache_info.misses, "size": cache_info.currsize}})
+    return jsonify(
+        {
+            "cleared": True,
+            "previous": {"hits": cache_info.hits, "misses": cache_info.misses, "size": cache_info.currsize},
+        }
+    )
 
 
 @app.get("/status")

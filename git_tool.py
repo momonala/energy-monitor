@@ -79,5 +79,6 @@ def commit_db_if_changed():
     run_command(push_args)
     logger.info(log_action)
 
+
 if __name__ == "__main__":
     commit_db_if_changed()
