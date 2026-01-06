@@ -2,11 +2,11 @@
  Description=Energy Monitor
  After=multi-user.target
 
- [Service]
- WorkingDirectory=/home/mnalavadi/energy_monitor
- Type=idle
- ExecStart=/home/mnalavadi/miniconda3/envs/energy_monitor/bin/python app.py
- User=mnalavadi
+[Service]
+WorkingDirectory=/home/mnalavadi/energy_monitor
+Type=idle
+ExecStart=/home/mnalavadi/.local/bin/uv run app.py
+User=mnalavadi
 
  [Install]
  WantedBy=multi-user.target

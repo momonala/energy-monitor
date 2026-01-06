@@ -13,9 +13,9 @@ def schedule_loop():
     """Schedule the periodic tasks."""
     # schedule.every(10).seconds.do(log_db_health_check)
     schedule.every().hour.at(":00").do(log_db_health_check)
-    logger.info(f"Scheduled hourly logging of DB health check")
+    logger.info("Scheduled hourly logging of DB health check")
     schedule.every().hour.at(":00").do(commit_db_if_changed)
-    logger.info(f"Scheduled hourly commit of DB if changed")
+    logger.info("Scheduled hourly commit of DB if changed")
     while True:
         schedule.run_pending()
         time.sleep(1)

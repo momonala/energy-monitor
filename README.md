@@ -40,7 +40,7 @@ flowchart LR
 ## Prerequisites
 
 - Python 3.12+
-- Poetry
+- uv (Python package manager)
 - MQTT broker (e.g., Mosquitto) running on the network
 - Tasmota device configured to publish to `tele/tasmota/#`
 
@@ -50,7 +50,8 @@ flowchart LR
    ```bash
    git clone https://github.com/momonala/energyMeter.git
    cd energyMeter
-   poetry install
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   uv sync
    ```
 
 2. Initialize the database:
@@ -237,8 +238,8 @@ Runs via `schedule` library in a background thread:
    ```
 
    This will:
-   - Create conda environment `energy_monitor`
-   - Install dependencies via Poetry
+   - Install uv (if not already installed)
+   - Install dependencies via uv
    - Set up systemd service
    - Configure Cloudflare tunnel (if applicable)
 

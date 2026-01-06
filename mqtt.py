@@ -2,8 +2,6 @@ import json
 import logging
 import queue
 import sys
-import threading
-import time
 
 import paho.mqtt.client as mqtt
 

@@ -10,7 +10,7 @@ from values import TELEGRAM_CHAT_ID
 def report_missing_data_to_telegram(message: str) -> None:
     """Send an error message to a Telegram chat."""
 
-    # if running on mac, return 
+    # if running on mac, return
     if sys.platform == "darwin":
         return
 
