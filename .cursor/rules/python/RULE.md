@@ -1,7 +1,7 @@
 ---
 description: "Python coding standards and best practices for modern Python 3.12+ development"
 globs: ["*.py"]
-alwaysApply: false
+alwaysApply: true
 ---
 
 # Python Basics - Coding Standards

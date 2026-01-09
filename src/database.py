@@ -16,10 +16,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-from config import DATABASE_URL
-from helpers import local_timezone
-from helpers import timed
-from telegram import report_missing_data_to_telegram
+from src.config import DATABASE_URL
+from src.helpers import local_timezone
+from src.helpers import timed
+from src.telegram import report_missing_data_to_telegram
 
 logger = logging.getLogger(__name__)
 

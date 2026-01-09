@@ -56,10 +56,10 @@ flowchart LR
 
 2. Initialize the database:
    ```bash
-   python database.py
+   uv run python -m src.database
    ```
 
-3. Configure `config.py`:
+3. Configure `src/config.py`:
    ```python
    DATABASE_URL = "sqlite:///data/energy.db"  # default
    SERVER_URL = "192.168.x.x"                 # MQTT broker IP (MUST CHANGE)
@@ -69,7 +69,7 @@ flowchart LR
    TASMOTA_UI_URL = "http://192.168.x.x/"     # Tasmota device IP (optional)
   ```
 
-4. Configure `values.py`:
+4. Configure `src/values.py`:
   ```python 
    TELEGRAM_API_TOKEN
    TELEGRAM_CHAT_ID
@@ -78,7 +78,7 @@ flowchart LR
 ## Running
 
 ```bash
-python app.py
+uv run python -m src.app
 ```
 
 Open `http://localhost:5008`
@@ -122,19 +122,23 @@ Open `http://localhost:5008`
 
 ```
 energy_monitor/
-├── app.py              # Flask entry point, API routes, thread startup
-├── database.py         # SQLAlchemy models, queries, stats
-├── mqtt.py             # MQTT client, message parsing, data ingestion
-├── scheduler.py        # Periodic tasks (health check, git commit)
-├── git_tool.py         # Auto-commit DB changes to git
-├── helpers.py          # Time parsing utilities
-├── values.py           # Configuration constants
+├── src/
+│   ├── app.py          # Flask entry point, API routes, thread startup
+│   ├── database.py     # SQLAlchemy models, queries, stats
+│   ├── mqtt.py         # MQTT client, message parsing, data ingestion
+│   ├── scheduler.py    # Periodic tasks (health check, git commit)
+│   ├── git_tool.py     # Auto-commit DB changes to git
+│   ├── helpers.py      # Time parsing utilities
+│   ├── config.py       # Configuration constants
+│   └── values.py       # Secret values (Telegram tokens)
 ├── static/
 │   ├── index.html      # Dashboard HTML
 │   ├── app.js          # Frontend: charting, interactions, live updates
 │   └── styles.css      # Styles with CSS custom properties
 ├── data/
 │   └── energy.db       # SQLite database
+├── tests/
+│   └── test_*.py       # Test files
 └── install/
     ├── install.sh                        # Raspberry Pi setup script
     └── projects_energy_monitor.service   # systemd service file
