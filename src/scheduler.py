@@ -3,8 +3,8 @@ import time
 
 import schedule
 
-from database import log_db_health_check
-from git_tool import commit_db_if_changed
+from src.database import log_db_health_check
+from src.git_tool import commit_db_if_changed
 
 logger = logging.getLogger(__name__)
 

@@ -3,8 +3,9 @@ import logging
 import requests
 
 import sys
-from values import TELEGRAM_API_TOKEN
-from values import TELEGRAM_CHAT_ID
+
+from src.values import TELEGRAM_API_TOKEN
+from src.values import TELEGRAM_CHAT_ID
 
 
 def report_missing_data_to_telegram(message: str) -> None:

@@ -1,34 +1,37 @@
 import json
 import logging
 import threading
+from pathlib import Path
 
 from flask import Flask
 from flask import jsonify
 from flask import request
 
-from config import FLASK_PORT
-from config import MQTT_PORT
-from config import SERVER_URL
-from config import TASMOTA_UI_URL
-from config import TOPIC
-from database import get_avg_daily_energy_usage
-from database import get_daily_energy_usage
-from database import get_readings
-from database import get_stats
-from database import latest_energy_reading
-from database import num_energy_readings_last_hour
-from database import num_total_energy_readings
-from helpers import parse_time_param
-from mqtt import db_worker
-from mqtt import get_mqtt_client
-from mqtt import mqtt_loop
-from scheduler import get_scheduled_jobs
-from scheduler import schedule_loop
+from src.config import FLASK_PORT
+from src.config import MQTT_PORT
+from src.config import SERVER_URL
+from src.config import TASMOTA_UI_URL
+from src.config import TOPIC
+from src.database import get_avg_daily_energy_usage
+from src.database import get_daily_energy_usage
+from src.database import get_readings
+from src.database import get_stats
+from src.database import latest_energy_reading
+from src.database import num_energy_readings_last_hour
+from src.database import num_total_energy_readings
+from src.helpers import parse_time_param
+from src.mqtt import db_worker
+from src.mqtt import get_mqtt_client
+from src.mqtt import mqtt_loop
+from src.scheduler import get_scheduled_jobs
+from src.scheduler import schedule_loop
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+# Point to static folder at project root (one level up from src/)
+static_folder = Path(__file__).parent.parent / "static"
+app = Flask(__name__, static_folder=str(static_folder))
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 
@@ -126,9 +129,12 @@ def status():
     }
 
 
-if __name__ == "__main__":
+def main():
     start_threads()
     logger.info(f"Running on http://0.0.0.0:{FLASK_PORT}")
-    logger.info(f"Running on : {SERVER_URL}:{FLASK_PORT}")
     logger.info(f"Status: {json.dumps(status(), indent=2)}")
-    app.run(host="0.0.0.0", port=FLASK_PORT, debug=False)
+    app.run(host="0.0.0.0", port=FLASK_PORT, debug=True)
+
+
+if __name__ == "__main__":
+    main()
