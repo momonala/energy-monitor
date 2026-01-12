@@ -78,7 +78,7 @@ flowchart LR
 ## Running
 
 ```bash
-uv run python -m src.app
+uv run app
 ```
 
 Open `http://localhost:5008`
@@ -121,7 +121,7 @@ Open `http://localhost:5008`
 ## Project Structure
 
 ```
-energy_monitor/
+energy-monitor/
 ├── src/
 │   ├── app.py          # Flask entry point, API routes, thread startup
 │   ├── database.py     # SQLAlchemy models, queries, stats
@@ -141,7 +141,7 @@ energy_monitor/
 │   └── test_*.py       # Test files
 └── install/
     ├── install.sh                        # Raspberry Pi setup script
-    └── projects_energy_monitor.service   # systemd service file
+    └── projects_energy-monitor.service   # systemd service file
 ```
 
 ## API Endpoints
@@ -249,9 +249,9 @@ Runs via `schedule` library in a background thread:
 
 2. Service management:
    ```bash
-   sudo systemctl status projects_energy_monitor.service
-   sudo systemctl restart projects_energy_monitor.service
-   journalctl -u projects_energy_monitor.service -f
+   sudo systemctl status projects_energy-monitor.service
+   sudo systemctl restart projects_energy-monitor.service
+   journalctl -u projects_energy-monitor.service -f
    ```
 
 ## Development Commands
@@ -261,10 +261,10 @@ Runs via `schedule` library in a background thread:
 black . && isort .
 
 # Sync to Raspberry Pi
-rsync -av --exclude 'data/' . mnalavadi@192.168.2.107:/home/mnalavadi/energy_monitor
+rsync -av --exclude 'data/' . mnalavadi@192.168.2.107:/home/mnalavadi/energy-monitor
 
 # Pull DB from Raspberry Pi
-rsync -av mnalavadi@192.168.2.107:/home/mnalavadi/energy_monitor/data/ ./data/
+rsync -av mnalavadi@192.168.2.107:/home/mnalavadi/energy-monitor/data/ ./data/
 ```
 
 ## Known Limitations

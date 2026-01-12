@@ -1,8 +1,7 @@
 import logging
+import sys
 
 import requests
-
-import sys
 
 from src.values import TELEGRAM_API_TOKEN
 from src.values import TELEGRAM_CHAT_ID

@@ -89,6 +89,7 @@ event_cache.json
 app_calendar_events.json
 recent_locations.html
 static/*.html
+data/energy.db
 
 # Local development
 .local/
