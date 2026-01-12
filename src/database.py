@@ -246,6 +246,36 @@ def get_daily_energy_usage(readings_data: list[dict]) -> list[dict]:
     return result
 
 
+def get_moving_avg_daily_usage(daily_energy_data: list[dict], window_days: int = 30) -> list[dict]:
+    """
+    Calculate 30-day moving average of daily energy consumption.
+    For each day, returns the average kWh consumption of the preceding window_days
+    (or fewer days if less history is available).
+    """
+    if not daily_energy_data:
+        return []
+
+    # Sort by timestamp
+    sorted_data = sorted(daily_energy_data, key=lambda x: x["t"])
+    
+    result = []
+    for i, day in enumerate(sorted_data):
+        # Get up to window_days of history (including current day)
+        start_idx = max(0, i - window_days + 1)
+        window_data = sorted_data[start_idx : i + 1]
+        
+        # Calculate average kWh for this window
+        kwh_values = [d["kwh"] for d in window_data]
+        avg_kwh = sum(kwh_values) / len(kwh_values) if kwh_values else 0.0
+        
+        result.append({
+            "t": day["t"],
+            "kwh": float(avg_kwh),
+        })
+    
+    return result
+
+
 def get_stats(start: datetime, end: datetime) -> dict:
     """
     Compute stats between [start, end]:

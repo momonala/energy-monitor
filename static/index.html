@@ -46,7 +46,7 @@
                 <span id="hover-daily-energy">–</span>
               </div>
               <div class="hover-row-new">
-                <span class="hover-label text-avg">Typical Daily Usage (kWh):</span>
+                <span id="hover-typical-label" class="hover-label text-avg">30d Avg Daily Usage (kWh):</span>
                 <span id="hover-typical-daily-energy">–</span>
               </div>
               <div class="hover-row-new">
@@ -63,19 +63,20 @@
             <div class="toolbar-row">
               <button id="btn-toggle-power" class="btn btn-trace btn-trace-power" data-series="1">Live Power</button>
               <button id="btn-toggle-daily" class="btn btn-trace btn-trace-daily" data-series="2">Daily Usage</button>
-              <button id="btn-toggle-typical" class="btn btn-trace btn-trace-typical" data-series="3">Typical Usage</button>
+              <button id="btn-toggle-typical" class="btn btn-trace btn-trace-typical" data-series="3">30d Avg</button>
               <button id="btn-toggle-avg-power" class="btn btn-trace btn-trace-avg-power" data-series="4">Avg Power</button>
               <button id="btn-toggle-meter" class="btn btn-trace btn-trace-meter" data-series="5">Meter Reading</button>
             </div>
             <div class="toolbar-row">
               <button id="btn-refresh" class="btn">Refresh</button>
               <button id="btn-reset" class="btn">Reset</button>
-              <button id="btn-last-year" class="btn">Year</button>
-              <button id="btn-last-month" class="btn">Month</button>
-              <button id="btn-last-week" class="btn">Week</button>
-              <button id="btn-last-day" class="btn">Day</button>
+              <button id="btn-toggle-scale" class="btn" title="Toggle power axis scale">📊 Auto</button>
+              <button id="btn-toggle-avg-mode" class="btn" title="Toggle between 30d moving average and total average">📈 30d</button>
               <button id="btn-last-hour" class="btn">Hour</button>
-              <button id="btn-toggle-scale" class="btn" title="Toggle power axis scale">📊 Auto Scale</button>
+              <button id="btn-last-day" class="btn">Day</button>
+              <button id="btn-last-week" class="btn">Week</button>
+              <button id="btn-last-month" class="btn">Month</button>
+              <button id="btn-last-year" class="btn">Year</button>
             </div>
           </div>
         </section>
