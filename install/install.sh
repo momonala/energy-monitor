@@ -1,13 +1,7 @@
 service_name="energy-monitor"
-service_name_underscore="energy_monitor"
 service_port=5008
 
 set -e  # Exit immediately if a command exits with a non-zero status
-
-# function, returns true if on mac else false
-is_mac() {
-    [ "$(uname)" == "Darwin" ]
-}
 
 echo "✅ Installing uv (Python package manager)"
 if ! command -v uv &> /dev/null; then
@@ -21,26 +15,20 @@ fi
 echo "✅ Installing project dependencies with uv"
 uv sync
 
-# if running on mac, exit now
-if is_mac; then
-    echo "✅ Running on macOS, skipping systemd service setup"
-    exit 0
-fi
-
 echo "✅ Copying service file to systemd directory"
-sudo cp install/projects_${service_name_underscore}.service /lib/systemd/system/projects_${service_name_underscore}.service
+sudo cp install/projects_${service_name}.service /lib/systemd/system/projects_${service_name}.service
 
 echo "✅ Setting permissions for the service file"
-sudo chmod 644 /lib/systemd/system/projects_${service_name_underscore}.service
+sudo chmod 644 /lib/systemd/system/projects_${service_name}.service
 
 echo "✅ Reloading systemd daemon"
 sudo systemctl daemon-reload
 sudo systemctl daemon-reexec
 
-echo "✅ Enabling the service: projects_${service_name_underscore}.service"
-sudo systemctl enable projects_${service_name_underscore}.service
-sudo systemctl restart projects_${service_name_underscore}.service
-sudo systemctl status projects_${service_name_underscore}.service --no-pager
+echo "✅ Enabling the service: projects_${service_name}.service"
+sudo systemctl enable projects_${service_name}.service
+sudo systemctl restart projects_${service_name}.service
+sudo systemctl status projects_${service_name}.service --no-pager
 
 echo "✅ Adding Cloudflared service"
 /home/mnalavadi/add_cloudflared_service.sh ${service_name}.mnalavadi.org $service_port

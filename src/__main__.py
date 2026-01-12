@@ -1,7 +1,12 @@
 """Entry point for running the energy monitor application."""
 
-from src.app import app, logger, start_threads, status, FLASK_PORT
 import json
+
+from src.app import FLASK_PORT
+from src.app import app
+from src.app import logger
+from src.app import start_threads
+from src.app import status
 
 if __name__ == "__main__":
     start_threads()
