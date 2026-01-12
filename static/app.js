@@ -30,6 +30,7 @@
   const hoverRollingAvg = document.getElementById("hover-rolling-avg");
   const hoverDailyEnergy = document.getElementById("hover-daily-energy");
   const hoverTypicalDailyEnergy = document.getElementById("hover-typical-daily-energy");
+  const hoverTypicalLabel = document.getElementById("hover-typical-label");
   // Secondary summary elements
   const statCurrentConsumption = document.getElementById("stat-current-consumption");
   const statCostRange = document.getElementById("stat-cost-range");
@@ -66,10 +67,12 @@
   let rollingAvgVals = []; // Rolling 2-day average of power
   let dailyEnergyData = []; // Daily energy consumption data {t, kwh, is_partial}
   let dailyEnergyVals = []; // Interpolated daily energy values aligned with xVals
-  let typicalDailyEnergyVals = []; // Typical daily energy values based on avgDailyEnergyUsage
+  let movingAvgDailyData = []; // 30-day moving average daily usage {t, kwh}
+  let typicalDailyEnergyVals = []; // 30-day moving average values aligned with xVals
   let costPerKwh = 0.3102;
   let avgDailyEnergyUsage = null; // kWh per day from historical data
   let powerScaleMode = 'auto'; // 'auto' or 'fixed' - controls power Y-axis scaling
+  let avgMode = '30d'; // '30d' for moving average or 'total' for flat line
   // Track series visibility: series index -> visible (true) or hidden (false)
   const seriesVisibility = {
     1: true, // Live Power
@@ -251,7 +254,7 @@
           scale: "y2",
         },
         {
-          label: "Typical Daily Usage",
+          label: "30d Avg Daily Usage",
           stroke: "rgba(168, 85, 247, 0.5)",
           width: 2,
           scale: "y3",
@@ -444,21 +447,48 @@
   }
 
   /**
-   * Calculate typical daily energy values based on avgDailyEnergyUsage.
-   * Each point gets the typical daily kWh value (avgDailyEnergyUsage).
+   * Calculate typical daily energy values aligned with xVals.
+   * Uses either 30-day moving average or flat total average based on avgMode.
    */
   function calculateTypicalDailyEnergyVals() {
-    if (!avgDailyEnergyUsage || !xVals.length) {
+    if (!xVals.length) {
       typicalDailyEnergyVals = new Array(xVals.length).fill(null);
       return;
     }
 
-    // Each point gets the same typical daily value
-    typicalDailyEnergyVals = new Array(xVals.length).fill(avgDailyEnergyUsage);
+    if (avgMode === '30d') {
+      // Use 30-day moving average
+      if (!movingAvgDailyData.length) {
+        typicalDailyEnergyVals = new Array(xVals.length).fill(null);
+        return;
+      }
+
+      // Build a map of date -> moving average kWh
+      const movingAvgMap = new Map();
+      for (const d of movingAvgDailyData) {
+        const date = new Date(d.t);
+        const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+        movingAvgMap.set(dateKey, d.kwh);
+      }
+
+      // Map each xVal timestamp to its day's moving average value
+      typicalDailyEnergyVals = xVals.map(secTs => {
+        const date = new Date(secTs * 1000);
+        const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+        return movingAvgMap.get(dateKey) ?? null;
+      });
+    } else {
+      // Use flat total average
+      if (!avgDailyEnergyUsage) {
+        typicalDailyEnergyVals = new Array(xVals.length).fill(null);
+        return;
+      }
+      typicalDailyEnergyVals = new Array(xVals.length).fill(avgDailyEnergyUsage);
+    }
   }
 
   /**
-   * Fetch energy summary (avg daily + daily usage) once at startup.
+   * Fetch energy summary (avg daily + daily usage + 30d moving avg) once at startup.
    */
   async function fetchEnergySummary() {
     try {
@@ -467,11 +497,13 @@
       const data = await res.json();
       avgDailyEnergyUsage = data.avg_daily;
       dailyEnergyData = data.daily;
-      console.log(`Loaded energy summary: avg=${avgDailyEnergyUsage} kWh/day, ${dailyEnergyData.length} days`);
+      movingAvgDailyData = data.moving_avg_30d || [];
+      console.log(`Loaded energy summary: avg=${avgDailyEnergyUsage} kWh/day, ${dailyEnergyData.length} days, ${movingAvgDailyData.length} moving avg points`);
     } catch (e) {
       console.error("Failed to fetch energy summary:", e);
       avgDailyEnergyUsage = null;
       dailyEnergyData = [];
+      movingAvgDailyData = [];
     }
   }
 
@@ -950,7 +982,7 @@
       powerScaleMode = powerScaleMode === 'auto' ? 'fixed' : 'auto';
       
       // Update button text
-      btnToggleScale.textContent = powerScaleMode === 'auto' ? '📊 Auto Scale' : '📊 Fixed Scale';
+      btnToggleScale.textContent = powerScaleMode === 'auto' ? '📊 Auto' : '📊 Fixed';
       
       // Recreate chart with new scale mode
       if (u) {
@@ -971,6 +1003,37 @@
             u.setSeries(idx, { show: seriesVisibility[idx] });
           }
         });
+      }
+    });
+  }
+
+  const btnToggleAvgMode = document.getElementById("btn-toggle-avg-mode");
+  if (btnToggleAvgMode) {
+    btnToggleAvgMode.addEventListener("click", () => {
+      // Toggle between 30d moving average and total average
+      avgMode = avgMode === '30d' ? 'total' : '30d';
+      
+      // Update button text
+      btnToggleAvgMode.textContent = avgMode === '30d' ? '📈 30d' : '📈 Total';
+      
+      // Update hover label
+      if (hoverTypicalLabel) {
+        hoverTypicalLabel.textContent = avgMode === '30d' ? '30d Avg Daily Usage (kWh):' : 'Total Avg Daily Usage (kWh):';
+      }
+      
+      // Update series label
+      if (u && u.series && u.series[6]) {
+        u.series[6].label = avgMode === '30d' ? "30d Avg Daily Usage" : "Total Avg Daily Usage";
+      }
+      
+      // Recalculate and update the chart
+      calculateTypicalDailyEnergyVals();
+      if (u && xVals.length > 0) {
+        u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
+        // Preserve current view
+        if (selection.start && selection.end) {
+          u.setScale("x", { min: selection.start / 1000, max: selection.end / 1000 });
+        }
       }
     });
   }

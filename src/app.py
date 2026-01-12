@@ -14,6 +14,7 @@ from src.config import TASMOTA_UI_URL
 from src.config import TOPIC
 from src.database import get_avg_daily_energy_usage
 from src.database import get_daily_energy_usage
+from src.database import get_moving_avg_daily_usage
 from src.database import get_readings
 from src.database import get_stats
 from src.database import latest_energy_reading
@@ -52,12 +53,14 @@ def api_readings():
 
 @app.get("/api/energy_summary")
 def energy_summary():
-    """Return avg daily and per-day energy usage."""
+    """Return avg daily, per-day energy usage, and 30-day moving average."""
     data = get_readings(start=None, end=None)
+    daily_data = get_daily_energy_usage(data)
     return jsonify(
         {
             "avg_daily": get_avg_daily_energy_usage(data),
-            "daily": get_daily_energy_usage(data),
+            "daily": daily_data,
+            "moving_avg_30d": get_moving_avg_daily_usage(daily_data, window_days=30),
         }
     )
 

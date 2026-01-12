@@ -26,6 +26,7 @@ Ex:
 - `/apply-rule webdev`
 - `/apply-rule architecture`
 - `/apply-rule docs`
+- `/apply-rule cleancode`
 
 If multiple standards are required, choose multiple.
 
@@ -63,3 +64,4 @@ When this command is invoked:
 - This command is declarative, not advisory
 - Prefer explicit failure over implicit non-compliance
 - If the rule is underspecified, follow its intent conservatively and note assumptions
+

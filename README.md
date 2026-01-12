@@ -86,7 +86,7 @@ Open `http://localhost:5008`
 ## Dashboard Features
 
 ### Layout
-- **Chart** (70% width): Power (W) and cumulative energy (kWh) over time
+- **Chart** (70% width): Power (W), cumulative energy (kWh), and daily usage trend (30-day moving average or total average)
 - **Selection Stats** (15% width): Statistics for the selected time range
 - **Period Summary** (15% width): Today, this week, this month, and total consumption
 
@@ -112,6 +112,18 @@ Open `http://localhost:5008`
 - Optimized for iPad landscape mode
 - Drag to select time range
 - Double-tap to reset zoom
+
+### Controls
+
+**Trace Toggles (Row 1):**
+- Show/hide individual series: Live Power | Daily Usage | 30d Avg | Avg Power | Meter Reading
+
+**Actions & Time Filters (Row 2):**
+- **Refresh**: Reload all data from server
+- **Reset**: Clear selection and show full data range
+- **📊 Auto / Fixed**: Toggle power axis between auto-scaling and fixed 0-2000W range
+- **📈 30d / Total**: Toggle daily usage baseline between 30-day moving average (adaptive) and total average (flat line)
+- **Hour / Day / Week / Month / Year**: Quick zoom to time range
 
 ### Loading States
 - Skeleton placeholders on initial load
@@ -151,6 +163,7 @@ energy-monitor/
 | `/` | GET | Serve web dashboard |
 | `/api/readings` | GET | Fetch readings with optional time range |
 | `/api/latest_reading` | GET | Get most recent reading |
+| `/api/energy_summary` | GET | Get avg daily usage, daily usage, and 30d moving average |
 | `/api/stats` | GET | Compute statistics for a time range |
 | `/status` | GET | Service health, connection status, job info |
 
@@ -170,6 +183,28 @@ Response:
 - `t`: timestamp (ms since epoch)
 - `p`: power (watts)
 - `e`: cumulative energy (kWh)
+
+### `/api/energy_summary`
+
+No parameters required.
+
+Response:
+```json
+{
+  "avg_daily": 15.2,
+  "daily": [
+    {"t": 1701432000000, "kwh": 14.5, "is_partial": false},
+    {"t": 1701518400000, "kwh": 15.8, "is_partial": false}
+  ],
+  "moving_avg_30d": [
+    {"t": 1701432000000, "kwh": 14.2},
+    {"t": 1701518400000, "kwh": 14.8}
+  ]
+}
+```
+- `avg_daily`: Average daily kWh over the last year
+- `daily`: Daily kWh consumption for each day
+- `moving_avg_30d`: 30-day moving average of daily consumption (or fewer days for dates with less history)
 
 ### `/api/stats`
 
