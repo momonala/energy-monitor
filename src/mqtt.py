@@ -1,7 +1,10 @@
+"""MQTT client service for receiving and processing energy meter data."""
+
 import json
 import logging
 import queue
 import sys
+import threading
 
 import paho.mqtt.client as mqtt
 
@@ -11,10 +14,14 @@ from src.config import TOPIC
 from src.database import init_db
 from src.database import save_energy_reading
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Queue for database writes
 db_queue = queue.Queue()
+
+# Global MQTT client for status checks
+_mqtt_client: mqtt.Client | None = None
 
 
 def db_worker():
@@ -32,8 +39,8 @@ def db_worker():
 
 
 def get_mqtt_client():
-    """Get the MQTT client."""
-    return mqtt.Client(protocol=mqtt.MQTTv5, userdata=None, transport="tcp")
+    """Get the MQTT client instance."""
+    return _mqtt_client
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
@@ -68,16 +75,32 @@ def on_disconnect(client, userdata, reason_code, properties):
     logger.info(f"[disconnect] code={reason_code}")
 
 
-def mqtt_loop():
-    """Loop the MQTT client."""
+if __name__ == "__main__":
     init_db()
+
     if sys.platform == "darwin":
         logger.info("Using macOS, skipping MQTT loop")
-        return
-    mqtt_client = get_mqtt_client()
-    mqtt_client.on_connect = on_connect
-    mqtt_client.on_disconnect = on_disconnect
-    mqtt_client.on_message = on_message
-    logger.info(f"Connecting to {SERVER_URL}:{MQTT_PORT} ...")
-    mqtt_client.connect(SERVER_URL, MQTT_PORT, keepalive=60)
-    mqtt_client.loop_start()
+        sys.exit(0)
+
+    # Start DB worker thread
+    worker_thread = threading.Thread(target=db_worker, daemon=True)
+    worker_thread.start()
+    logger.info("✅ Started DB worker thread")
+
+    # Create and configure MQTT client
+    _mqtt_client = mqtt.Client(protocol=mqtt.MQTTv5, userdata=None, transport="tcp")
+    _mqtt_client.on_connect = on_connect
+    _mqtt_client.on_disconnect = on_disconnect
+    _mqtt_client.on_message = on_message
+
+    logger.info(f"🔌 Connecting to {SERVER_URL}:{MQTT_PORT} ...")
+    _mqtt_client.connect(SERVER_URL, MQTT_PORT, keepalive=60)
+    logger.info("✅ MQTT client connected, starting message loop")
+
+    # Use loop_forever() to keep the process alive
+    try:
+        _mqtt_client.loop_forever()
+    except KeyboardInterrupt:
+        logger.info("🛑 Shutting down MQTT client")
+        _mqtt_client.disconnect()
+        db_queue.put(None)  # Signal worker to stop
