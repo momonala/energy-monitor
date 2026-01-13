@@ -1,0 +1,12 @@
+[Unit]
+Description=Energy Monitor DB backup service
+After=multi-user.target
+
+[Service]
+WorkingDirectory=/home/mnalavadi/energy-monitor
+Type=idle
+ExecStart=/home/mnalavadi/.local/bin/uv run python -m src.scheduler
+User=mnalavadi
+
+[Install]
+WantedBy=multi-user.target

@@ -1,13 +1,13 @@
 # Energy Monitor
 
-[![CI](https://github.com/momonala/energy-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/momonala/energy-monitor/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/momonala/energy-monitor/branch/main/graph/badge.svg)](https://codecov.io/gh/momonala/energy-monitor)
+[CI](https://github.com/momonala/energy-monitor/actions/workflows/ci.yml)
+[codecov](https://codecov.io/gh/momonala/energy-monitor)
 
 Real-time energy monitoring dashboard for MT681 smart meters via Tasmota MQTT.
 
 ## Screenshot
 
-![Dashboard](docs/screenshot.png)
+Dashboard
 
 ## Tech Stack
 
@@ -23,17 +23,17 @@ flowchart LR
     subgraph Infrastructure
         Tasmota -->|MQTT :1883| Broker[MQTT Broker]
     end
-    subgraph App
-        Broker --> Flask[Flask :5008]
-        Flask <--> DB[(SQLite)]
+    subgraph Services
+        Broker --> MQTT[MQTT Service]
+        MQTT --> DB[(SQLite)]
+        Flask[Flask :5008] --> DB
         Flask --> UI[Web Dashboard]
-    end
-    subgraph Scheduled
-        Flask -.-> Git[Git Auto-commit]
+        Scheduler[Scheduler] --> DB
+        Scheduler --> Git[Git Auto-commit]
     end
 ```
 
-**Data flow:** Meter → IR → Tasmota → MQTT → Flask → SQLite → REST API → Browser
+**Data flow:** Meter → IR → Tasmota → MQTT Broker → MQTT Service → SQLite → Flask REST API → Browser
 
 ## Hardware
 
@@ -50,41 +50,23 @@ flowchart LR
 ## Installation
 
 1. Clone and install dependencies:
-   ```bash
+  ```bash
    git clone https://github.com/momonala/energyMeter.git
    cd energyMeter
    curl -LsSf https://astral.sh/uv/install.sh | sh
    uv sync
-   ```
-
+  ```
 2. Initialize the database:
-   ```bash
+  ```bash
    uv run python -m src.database
-   ```
-
+  ```
 3. Configure `pyproject.toml`:
-   
-   Edit the `[tool.config]` section with your settings:
-   ```toml
-   [tool.config]
-   # Server settings
-   server_url = "192.168.x.x"        # MQTT broker IP (MUST CHANGE)
-   flask_port = 5008                 # web server port
-   mqtt_port = 1883                  # default MQTT port
-   
-   # Database
-   database_path = "data/energy.db"  # SQLite database path
-   
-   # MQTT settings
-   mqtt_topic = "tele/tasmota/#"     # MQTT topic pattern
-   tasmota_ui_url = "http://192.168.x.x/"  # Tasmota device IP (optional)
-   ```
-
+  Edit the `[tool.config]` section with your settings:
 4. Configure `src/values.py`:
-  ```python 
+  ```python
    TELEGRAM_API_TOKEN
    TELEGRAM_CHAT_ID
-   ```
+  ```
 
 ## Running
 
@@ -97,11 +79,13 @@ Open `http://localhost:5008`
 ## Dashboard Features
 
 ### Layout
+
 - **Chart** (70% width): Power (W), cumulative energy (kWh), and daily usage trend (30-day moving average or total average)
 - **Selection Stats** (15% width): Statistics for the selected time range
 - **Period Summary** (15% width): Today, this week, this month, and total consumption
 
 ### Live Updates
+
 - Data refreshes every 10 seconds via incremental polling
 - Only new data points are fetched and appended to the chart
 - Visual flash indicator when new data arrives
@@ -109,17 +93,20 @@ Open `http://localhost:5008`
 
 ### Keyboard Shortcuts
 
-| Key | Action |
-|-----|--------|
-| `R` | Refresh data |
+
+| Key   | Action                 |
+| ----- | ---------------------- |
+| `R`   | Refresh data           |
 | `Esc` | Reset selection / zoom |
-| `1` | View last hour |
-| `2` | View last day |
-| `3` | View last week |
-| `4` | View last month |
-| `5` | View last year |
+| `1`   | View last hour         |
+| `2`   | View last day          |
+| `3`   | View last week         |
+| `4`   | View last month        |
+| `5`   | View last year         |
+
 
 ### Touch Support
+
 - Optimized for iPad landscape mode
 - Drag to select time range
 - Double-tap to reset zoom
@@ -127,9 +114,11 @@ Open `http://localhost:5008`
 ### Controls
 
 **Trace Toggles (Row 1):**
+
 - Show/hide individual series: Live Power | Daily Usage | 30d Avg | Avg Power | Meter Reading
 
 **Actions & Time Filters (Row 2):**
+
 - **Refresh**: Reload all data from server
 - **Reset**: Clear selection and show full data range
 - **📊 Auto / Fixed**: Toggle power axis between auto-scaling and fixed 0-2000W range
@@ -137,6 +126,7 @@ Open `http://localhost:5008`
 - **Hour / Day / Week / Month / Year**: Quick zoom to time range
 
 ### Loading States
+
 - Skeleton placeholders on initial load
 - Chart loading overlay
 - Button loading animation during refresh
@@ -146,10 +136,10 @@ Open `http://localhost:5008`
 ```
 energy-monitor/
 ├── src/
-│   ├── app.py          # Flask entry point, API routes, thread startup
+│   ├── app.py          # Flask entry point, API routes
 │   ├── database.py     # SQLAlchemy models, queries, stats
-│   ├── mqtt.py         # MQTT client, message parsing, data ingestion
-│   ├── scheduler.py    # Periodic tasks (health check, git commit)
+│   ├── mqtt.py         # Standalone MQTT client service entry point
+│   ├── scheduler.py   # Standalone scheduler entry point (health check, git commit)
 │   ├── git_tool.py     # Auto-commit DB changes to git
 │   ├── helpers.py      # Time parsing utilities
 │   ├── config.py       # Configuration constants
@@ -163,34 +153,41 @@ energy-monitor/
 ├── tests/
 │   └── test_*.py       # Test files
 └── install/
-    ├── install.sh                        # Raspberry Pi setup script
-    └── projects_energy-monitor.service   # systemd service file
+    ├── install.sh                              # Raspberry Pi setup script
+    ├── projects_energy-monitor.service         # systemd service for web app
+    ├── projects_energy-monitor_mqtt.service      # systemd service for MQTT client
+    └── projects_energy-monitor_data-backup-scheduler.service # systemd service for scheduler
 ```
 
 ## API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Serve web dashboard |
-| `/api/readings` | GET | Fetch readings with optional time range |
-| `/api/latest_reading` | GET | Get most recent reading |
-| `/api/energy_summary` | GET | Get avg daily usage, daily usage, and 30d moving average |
-| `/api/stats` | GET | Compute statistics for a time range |
-| `/status` | GET | Service health, connection status, job info |
+
+| Endpoint              | Method | Description                                              |
+| --------------------- | ------ | -------------------------------------------------------- |
+| `/`                   | GET    | Serve web dashboard                                      |
+| `/api/readings`       | GET    | Fetch readings with optional time range                  |
+| `/api/latest_reading` | GET    | Get most recent reading                                  |
+| `/api/energy_summary` | GET    | Get avg daily usage, daily usage, and 30d moving average |
+| `/api/stats`          | GET    | Compute statistics for a time range                      |
+| `/status`             | GET    | Service health, connection status, job info              |
+
 
 ### `/api/readings`
 
 Query params:
+
 - `start` - ISO-8601 string or ms since epoch (optional)
 - `end` - ISO-8601 string or ms since epoch (optional)
 - `after` - Unix timestamp; returns only records after this time (for incremental updates)
 
 Response:
+
 ```json
 [
   {"t": 1701432000000, "p": 450.5, "e": 12345.67}
 ]
 ```
+
 - `t`: timestamp (ms since epoch)
 - `p`: power (watts)
 - `e`: cumulative energy (kWh)
@@ -200,6 +197,7 @@ Response:
 No parameters required.
 
 Response:
+
 ```json
 {
   "avg_daily": 15.2,
@@ -213,6 +211,7 @@ Response:
   ]
 }
 ```
+
 - `avg_daily`: Average daily kWh over the last year
 - `daily`: Daily kWh consumption for each day
 - `moving_avg_30d`: 30-day moving average of daily consumption (or fewer days for dates with less history)
@@ -220,10 +219,12 @@ Response:
 ### `/api/stats`
 
 Query params (required):
+
 - `start` - ISO-8601 string or ms since epoch
 - `end` - ISO-8601 string or ms since epoch
 
 Response:
+
 ```json
 {
   "start": 1701432000000,
@@ -255,50 +256,84 @@ EnergyReading
 
 ## Key Concepts
 
-| Concept | Description |
-|---------|-------------|
-| `energy_in_kwh` | Cumulative energy consumed from grid (meter reading) |
-| `energy_out_kwh` | Cumulative energy exported to grid (for solar) |
-| `power_watts` | Instantaneous power draw |
-| `MT681` | Smart meter model; payload key in Tasmota MQTT messages |
-| `E_in` / `E_out` | Tasmota payload fields for energy in/out |
+
+| Concept          | Description                                             |
+| ---------------- | ------------------------------------------------------- |
+| `energy_in_kwh`  | Cumulative energy consumed from grid (meter reading)    |
+| `energy_out_kwh` | Cumulative energy exported to grid (for solar)          |
+| `power_watts`    | Instantaneous power draw                                |
+| `MT681`          | Smart meter model; payload key in Tasmota MQTT messages |
+| `E_in` / `E_out` | Tasmota payload fields for energy in/out                |
+
 
 ## Storage
 
-| Path | Purpose |
-|------|---------|
-| `data/energy.db` | SQLite database with all readings |
-| `data/energy.db.bk` | Backup copy (created hourly) |
+
+| Path                | Purpose                           |
+| ------------------- | --------------------------------- |
+| `data/energy.db`    | SQLite database with all readings |
+| `data/energy.db.bk` | Backup copy (created hourly)      |
+
 
 ## Background Jobs
 
-Runs via `schedule` library in a background thread:
+The scheduler service runs periodic tasks via the `schedule` library:
 
-| Schedule | Task |
-|----------|------|
-| Hourly `:00` | Log DB health check (reading counts) |
+
+| Schedule     | Task                                             |
+| ------------ | ------------------------------------------------ |
+| Hourly `:00` | Log DB health check (reading counts)             |
 | Hourly `:00` | Commit DB to git if changed (amend + force push) |
+
+
+Run services separately:
+
+```bash
+# Run MQTT client
+uv run python -m src.mqtt
+
+# Run scheduler
+uv run python -m src.scheduler
+```
 
 ## Deployment (Raspberry Pi)
 
 1. Run the install script:
-   ```bash
+  ```bash
    cd install
    ./install.sh
-   ```
-
+  ```
    This will:
-   - Install uv (if not already installed)
-   - Install dependencies via uv
-   - Set up systemd service
-   - Configure Cloudflare tunnel (if applicable)
-
+  - Install uv (if not already installed)
+  - Install dependencies via uv
+  - Set up systemd services (web app, MQTT client, and scheduler)
+  - Configure Cloudflare tunnel (if applicable)
 2. Service management:
-   ```bash
-   sudo systemctl status projects_energy-monitor.service
-   sudo systemctl restart projects_energy-monitor.service
-   journalctl -u projects_energy-monitor.service -f
-   ```
+  Three services are installed:
+
+  | Service                                                 | Purpose                                       | Port |
+  | ------------------------------------------------------- | --------------------------------------------- | ---- |
+  | `projects_energy-monitor.service`                       | Flask web application                         | 5008 |
+  | `projects_energy-monitor_mqtt.service`                  | MQTT client for receiving meter data          | N/A  |
+  | `projects_energy-monitor_data-backup-scheduler.service` | Hourly database health checks and git backups | N/A  |
+
+  ```bash
+  # Check status
+  sudo systemctl status projects_energy-monitor.service
+  sudo systemctl status projects_energy-monitor_mqtt.service
+  sudo systemctl status projects_energy-monitor_data-backup-scheduler.service
+
+  # View logs
+  sudo journalctl -u projects_energy-monitor.service -f
+  sudo journalctl -u projects_energy-monitor_mqtt.service -f
+  sudo journalctl -u projects_energy-monitor_data-backup-scheduler.service -f
+
+  # Restart services
+  sudo systemctl restart projects_energy-monitor.service
+  sudo systemctl restart projects_energy-monitor_mqtt.service
+  sudo systemctl restart projects_energy-monitor_data-backup-scheduler.service
+  ```
+
 
 ## Development Commands
 
@@ -318,3 +353,4 @@ rsync -av mnalavadi@192.168.2.107:/home/mnalavadi/energy-monitor/data/ ./data/
 - MQTT loop skipped on macOS (`sys.platform == "darwin"`) - designed for headless Linux deployment
 - Git auto-commit uses `--amend --force` - single commit history for DB file
 - No authentication on API endpoints
+

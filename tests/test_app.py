@@ -29,16 +29,15 @@ def test_api_endpoints_return_json(client, endpoint, expected_keys):
     with patch("src.app.latest_energy_reading", return_value={"timestamp": "2024-01-01T00:00:00"}):
         with patch("src.app.get_mqtt_client") as mock_mqtt:
             mock_mqtt.return_value.is_connected.return_value = True
-            with patch("src.app.get_scheduled_jobs", return_value=[]):
-                with patch("src.app.num_energy_readings_last_hour", return_value=100):
-                    with patch("src.app.num_total_energy_readings", return_value=1000):
-                        response = client.get(endpoint)
-                        assert response.status_code == 200
-                        data = response.get_json()
-                        assert isinstance(data, dict)
-                        if expected_keys:
-                            for key in expected_keys:
-                                assert key in data
+            with patch("src.app.num_energy_readings_last_hour", return_value=100):
+                with patch("src.app.num_total_energy_readings", return_value=1000):
+                    response = client.get(endpoint)
+                    assert response.status_code == 200
+                    data = response.get_json()
+                    assert isinstance(data, dict)
+                    if expected_keys:
+                        for key in expected_keys:
+                            assert key in data
 
 
 def test_api_readings_accepts_time_params(client):
