@@ -98,7 +98,7 @@ def test_moving_avg_daily_usage_with_single_day():
     """Moving average with single day returns that day's value."""
     daily_data = [{"t": 1000000, "kwh": 10.0}]
     result = get_moving_avg_daily_usage(daily_data, window_days=30)
-    
+
     assert len(result) == 1
     assert result[0]["t"] == 1000000
     assert result[0]["kwh"] == pytest.approx(10.0)
@@ -107,14 +107,11 @@ def test_moving_avg_daily_usage_with_single_day():
 def test_moving_avg_daily_usage_calculates_average():
     """Moving average correctly calculates average over window."""
     # Create 5 days of data with known values
-    daily_data = [
-        {"t": 1000000 + i * 86400000, "kwh": float(i + 1) * 10.0}
-        for i in range(5)
-    ]
+    daily_data = [{"t": 1000000 + i * 86400000, "kwh": float(i + 1) * 10.0} for i in range(5)]
     # Day 0: 10, Day 1: 20, Day 2: 30, Day 3: 40, Day 4: 50
-    
+
     result = get_moving_avg_daily_usage(daily_data, window_days=3)
-    
+
     assert len(result) == 5
     # Day 0: avg(10) = 10
     assert result[0]["kwh"] == pytest.approx(10.0)
@@ -131,14 +128,11 @@ def test_moving_avg_daily_usage_calculates_average():
 def test_moving_avg_daily_usage_handles_small_history():
     """Moving average uses available data when history is less than window."""
     # Create 10 days of data
-    daily_data = [
-        {"t": 1000000 + i * 86400000, "kwh": 15.0}
-        for i in range(10)
-    ]
-    
+    daily_data = [{"t": 1000000 + i * 86400000, "kwh": 15.0} for i in range(10)]
+
     # Request 30-day window but only have 10 days
     result = get_moving_avg_daily_usage(daily_data, window_days=30)
-    
+
     assert len(result) == 10
     # Each day should use all available history up to that point
     # Last day should average all 10 days = 15.0

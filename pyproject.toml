@@ -20,7 +20,25 @@ dependencies = [
     "pandas>=2.3.3",
     "ruff>=0.14.10",
     "isort>=7.0.0",
+    "typer>=0.9.0",
 ]
+
+[tool.config]
+# Server settings
+server_url = "192.168.2.107"
+flask_port = 5008
+mqtt_port = 1883
+
+# Database
+database_path = "data/energy.db"
+
+# MQTT settings
+mqtt_topic = "tele/tasmota/#"
+tasmota_ui_url = "http://192.168.2.110/"
+
+# Cloudflare tunnel settings
+tunnel_name = "raspberrypi-tunnel"
+domain_suffix = "mnalavadi.org"
 
 [build-system]
 requires = ["hatchling"]
@@ -31,6 +49,7 @@ packages = ["src"]
 
 [project.scripts]
 app = "src.app:main"
+config = "src.config:main"
 
 [tool.black]
 line-length = 110
@@ -66,3 +85,4 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
 ]
+

@@ -59,15 +59,23 @@ flowchart LR
    uv run python -m src.database
    ```
 
-3. Configure `src/config.py`:
-   ```python
-   DATABASE_URL = "sqlite:///data/energy.db"  # default
-   SERVER_URL = "192.168.x.x"                 # MQTT broker IP (MUST CHANGE)
-   MQTT_PORT = 1883                           # default MQTT port
-   FLASK_PORT = 5008                          # web server port
-   TOPIC = "tele/tasmota/#"                   # MQTT topic pattern
-   TASMOTA_UI_URL = "http://192.168.x.x/"     # Tasmota device IP (optional)
-  ```
+3. Configure `pyproject.toml`:
+   
+   Edit the `[tool.config]` section with your settings:
+   ```toml
+   [tool.config]
+   # Server settings
+   server_url = "192.168.x.x"        # MQTT broker IP (MUST CHANGE)
+   flask_port = 5008                 # web server port
+   mqtt_port = 1883                  # default MQTT port
+   
+   # Database
+   database_path = "data/energy.db"  # SQLite database path
+   
+   # MQTT settings
+   mqtt_topic = "tele/tasmota/#"     # MQTT topic pattern
+   tasmota_ui_url = "http://192.168.x.x/"  # Tasmota device IP (optional)
+   ```
 
 4. Configure `src/values.py`:
   ```python 
