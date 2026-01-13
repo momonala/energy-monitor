@@ -1,5 +1,8 @@
 # Energy Monitor
 
+[![CI](https://github.com/momonala/energy-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/momonala/energy-monitor/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/momonala/energy-monitor/branch/main/graph/badge.svg)](https://codecov.io/gh/momonala/energy-monitor)
+
 Real-time energy monitoring dashboard for MT681 smart meters via Tasmota MQTT.
 
 ## Screenshot

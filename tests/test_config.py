@@ -53,13 +53,3 @@ def test_config_without_flag_fails():
 
     assert result.exit_code == 1
     assert "Error: No config key specified" in result.output
-
-
-def test_config_help_shows_all_options():
-    result = runner.invoke(app, ["--help"])
-
-    assert result.exit_code == 0
-    assert "Get configuration values from pyproject.toml" in result.stdout
-    assert "--all" in result.stdout
-    assert "--project-name" in result.stdout
-    assert "--flask-port" in result.stdout

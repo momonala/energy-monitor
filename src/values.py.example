@@ -1,0 +1,4 @@
+# Stub values for CI/testing - copy to values.py for local development
+
+TELEGRAM_API_TOKEN = "0000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+TELEGRAM_CHAT_ID = "0000000000"

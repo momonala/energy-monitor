@@ -3,7 +3,6 @@ from pathlib import Path
 
 import typer
 
-
 _config_file = Path(__file__).parent.parent / "pyproject.toml"
 with _config_file.open("rb") as f:
     _config = tomllib.load(f)
