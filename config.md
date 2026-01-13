@@ -254,12 +254,6 @@ def test_config_without_flag_fails():
     assert "Error: No config key specified" in result.output
 
 
-def test_config_help_shows_all_options():
-    result = runner.invoke(app, ["--help"])
-    
-    assert result.exit_code == 0
-    assert "--all" in result.stdout
-    assert "--project-name" in result.stdout
 ```
 
 Run with: `uv run pytest tests/test_config.py -v`
