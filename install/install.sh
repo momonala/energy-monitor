@@ -26,9 +26,9 @@ domain_suffix=$(uv run config --domain-suffix)
 echo "📋 Configuration:"
 {
     uv run config --all | while IFS='=' read -r key value; do
-        echo  "   ${CYAN}${key}${NC}|${YELLOW}${value}${NC}"
+        echo -e "   ${CYAN}${key}${NC}|${YELLOW}${value}${NC}"
     done
-    echo  "   ${CYAN}cloudflare_domain${NC}|${YELLOW}${service_name}.${domain_suffix}${NC}"
+    echo -e "   ${CYAN}cloudflare_domain${NC}|${YELLOW}${service_name}.${domain_suffix}${NC}"
 } | column -t -s '|'
 
 echo "✅ Copying service file to systemd directory"
