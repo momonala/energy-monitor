@@ -1,7 +1,9 @@
-service_name="energy-monitor"
-service_port=5008
-
 set -e  # Exit immediately if a command exits with a non-zero status
+
+# Colors
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
 echo "✅ Installing uv (Python package manager)"
 if ! command -v uv &> /dev/null; then
@@ -14,6 +16,20 @@ fi
 
 echo "✅ Installing project dependencies with uv"
 uv sync
+
+# Extract configuration from pyproject.toml
+service_name=$(uv run config --project-name)
+service_port=$(uv run config --flask-port)
+tunnel_name=$(uv run config --tunnel-name)
+domain_suffix=$(uv run config --domain-suffix)
+
+echo "📋 Configuration:"
+{
+    uv run config --all | while IFS='=' read -r key value; do
+        echo  "   ${CYAN}${key}${NC}|${YELLOW}${value}${NC}"
+    done
+    echo  "   ${CYAN}cloudflare_domain${NC}|${YELLOW}${service_name}.${domain_suffix}${NC}"
+} | column -t -s '|'
 
 echo "✅ Copying service file to systemd directory"
 sudo cp install/projects_${service_name}.service /lib/systemd/system/projects_${service_name}.service
@@ -31,9 +47,9 @@ sudo systemctl restart projects_${service_name}.service
 sudo systemctl status projects_${service_name}.service --no-pager
 
 echo "✅ Adding Cloudflared service"
-/home/mnalavadi/add_cloudflared_service.sh ${service_name}.mnalavadi.org $service_port
+/home/mnalavadi/add_cloudflared_service.sh ${service_name}.${domain_suffix} $service_port
 echo "✅ Configuring Cloudflared DNS route"
-cloudflared tunnel route dns raspberrypi-tunnel ${service_name}.mnalavadi.org
+cloudflared tunnel route dns ${tunnel_name} ${service_name}.${domain_suffix}
 echo "✅ Restarting Cloudflared service"
 sudo systemctl restart cloudflared
 

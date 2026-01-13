@@ -257,22 +257,24 @@ def get_moving_avg_daily_usage(daily_energy_data: list[dict], window_days: int =
 
     # Sort by timestamp
     sorted_data = sorted(daily_energy_data, key=lambda x: x["t"])
-    
+
     result = []
     for i, day in enumerate(sorted_data):
         # Get up to window_days of history (including current day)
         start_idx = max(0, i - window_days + 1)
         window_data = sorted_data[start_idx : i + 1]
-        
+
         # Calculate average kWh for this window
         kwh_values = [d["kwh"] for d in window_data]
         avg_kwh = sum(kwh_values) / len(kwh_values) if kwh_values else 0.0
-        
-        result.append({
-            "t": day["t"],
-            "kwh": float(avg_kwh),
-        })
-    
+
+        result.append(
+            {
+                "t": day["t"],
+                "kwh": float(avg_kwh),
+            }
+        )
+
     return result
 
 
