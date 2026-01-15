@@ -1,1 +1,2 @@
 data/energy.db.bk filter=lfs diff=lfs merge=lfs -text
+*.db.bk filter=lfs diff=lfs merge=lfs -text
