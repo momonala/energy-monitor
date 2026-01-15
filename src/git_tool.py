@@ -76,8 +76,11 @@ def commit_db_if_changed():
         push_args = ["git", "push", "origin", BRANCH]
         log_action = f"New auto-backup commit created with bounds {start_time}-{now_str}."
 
-    run_command(push_args)
-    logger.info(log_action)
+    try:
+        run_command(push_args)
+        logger.info(log_action)
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Failed to push backup commit to remote: {e}")
 
 
 if __name__ == "__main__":
