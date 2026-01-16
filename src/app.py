@@ -6,7 +6,9 @@ from pathlib import Path
 
 from flask import Flask
 from flask import jsonify
+from flask import redirect
 from flask import request
+from flask_compress import Compress
 
 from src.config import FLASK_PORT
 from src.config import MQTT_PORT
@@ -30,13 +32,34 @@ logger = logging.getLogger(__name__)
 # Point to static folder at project root (one level up from src/)
 static_folder = Path(__file__).parent.parent / "static"
 app = Flask(__name__, static_folder=str(static_folder))
+Compress(app)  # Enable gzip compression for responses > 500 bytes
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
+# Mobile user-agent patterns (exclude iPad - it should see desktop)
+MOBILE_PATTERNS = ["Mobile", "Android", "iPhone", "iPod", "BlackBerry", "Windows Phone"]
+
+
+def is_mobile_user_agent() -> bool:
+    """Check if the request is from a mobile device (excluding iPad)."""
+    user_agent = request.headers.get("User-Agent", "")
+    # Explicitly exclude iPad
+    if "iPad" in user_agent:
+        return False
+    return any(pattern in user_agent for pattern in MOBILE_PATTERNS)
 
 
 @app.get("/")
 def index():
-    """Serve the frontend."""
+    """Serve the frontend. Redirect mobile users to /mobile."""
+    if is_mobile_user_agent():
+        return redirect("/mobile")
     return app.send_static_file("index.html")
+
+
+@app.get("/mobile")
+def mobile():
+    """Serve the mobile-optimized frontend."""
+    return app.send_static_file("mobile.html")
 
 
 @app.get("/api/readings")

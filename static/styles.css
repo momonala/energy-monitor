@@ -130,6 +130,20 @@ body {
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* Mobile link in header */
+.mobile-link {
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  opacity: 0.6;
+}
+
+.mobile-link:hover {
+  opacity: 1;
+  border-color: var(--color-border-hover);
+  background: rgba(255, 255, 255, 0.1);
+}
+
 /* --------------------------------------------------------------------------
    5. Cards (shared styles)
    -------------------------------------------------------------------------- */
@@ -481,10 +495,6 @@ body {
   background: rgba(11, 11, 11, 0.8);
   border-radius: var(--border-radius);
   z-index: 10;
-}
-
-.chart-loading::after {
-  content: "Loading...";
   color: var(--color-muted);
   font-size: 14px;
 }
@@ -567,4 +577,334 @@ body {
   .status {
     justify-content: center;
   }
+}
+
+/* ==========================================================================
+   11. Mobile Page Styles
+   ========================================================================== */
+
+/* Mobile body - uses same base styles as desktop */
+.mobile-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh; /* Dynamic viewport height for mobile browsers */
+}
+
+/* Mobile header - simplified */
+.mobile-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mobile-header .branding h1 {
+  font-size: 1.1rem;
+}
+
+/* Mobile main content */
+.mobile-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile input section */
+.mobile-input-section {
+  padding: var(--space-lg);
+}
+
+.mobile-input-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-sm);
+}
+
+.mobile-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.mobile-days-input {
+  flex: 1;
+  max-width: 120px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  padding: var(--space-md);
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  appearance: textfield;
+  -webkit-appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.mobile-days-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(0, 255, 81, 0.2);
+}
+
+/* Hide spin buttons on number input */
+.mobile-days-input::-webkit-inner-spin-button,
+.mobile-days-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.mobile-input-suffix {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+/* Mobile chart card */
+.mobile-chart-card {
+  padding: var(--space-md);
+}
+
+.mobile-chart-wrapper {
+  position: relative;
+  height: 220px;
+  pointer-events: none; /* Disable all chart interactions */
+}
+
+.mobile-chart-wrapper #chart {
+  width: 100%;
+  height: 100%;
+}
+
+/* Mobile chart toggle buttons */
+.mobile-chart-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding-top: var(--space-md);
+  justify-content: center;
+}
+
+.mobile-toggle {
+  padding: var(--space-sm) var(--space-md);
+  min-height: 36px;
+  min-width: 60px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-pill);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-toggle:active {
+  transform: scale(0.95);
+}
+
+/* Inactive state - dimmed */
+.mobile-toggle:not(.active) {
+  opacity: 0.4;
+}
+
+/* Color variants matching chart series */
+.mobile-toggle-power {
+  color: var(--color-power);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+.mobile-toggle-power.active {
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(37, 99, 235, 0.6);
+}
+
+.mobile-toggle-energy {
+  color: var(--color-energy);
+  border-color: rgba(235, 133, 37, 0.3);
+}
+
+.mobile-toggle-energy.active {
+  background: rgba(235, 133, 37, 0.15);
+  border-color: rgba(235, 133, 37, 0.6);
+}
+
+.mobile-toggle-daily {
+  color: var(--color-daily-energy);
+  border-color: rgba(255, 220, 50, 0.3);
+}
+
+.mobile-toggle-daily.active {
+  background: rgba(255, 220, 50, 0.15);
+  border-color: rgba(255, 220, 50, 0.6);
+}
+
+.mobile-toggle-typical {
+  color: var(--color-avg);
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
+.mobile-toggle-typical.active {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.6);
+}
+
+/* Mobile stats grid */
+.mobile-stats-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+/* Mobile stat card */
+.mobile-stat-card {
+  padding: var(--space-lg);
+}
+
+.mobile-stat-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mobile-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--space-sm) 0;
+}
+
+.mobile-stat-row + .mobile-stat-row {
+  border-top: 1px solid var(--color-border);
+}
+
+/* 3-column stat row for real vs typical comparison */
+.mobile-stat-row-3col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-sm);
+  text-align: right;
+}
+
+.mobile-stat-row-3col .mobile-stat-label {
+  text-align: left;
+}
+
+.mobile-stat-header {
+  padding-bottom: var(--space-xs);
+}
+
+.mobile-stat-col-header {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: right;
+}
+
+.mobile-stat-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.mobile-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-stat-row-3col .mobile-stat-value {
+  font-size: 16px;
+}
+
+/* Mobile footer */
+.mobile-footer {
+  padding: var(--space-lg);
+  text-align: center;
+}
+
+.mobile-desktop-link {
+  color: var(--color-muted);
+  text-decoration: none;
+  font-size: 14px;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  transition: all 0.15s ease;
+}
+
+.mobile-desktop-link:hover,
+.mobile-desktop-link:active {
+  color: var(--color-text);
+  border-color: var(--color-border-hover);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Mobile table card */
+.mobile-table-card {
+  padding: var(--space-lg);
+}
+
+.mobile-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-table th,
+.mobile-table td {
+  padding: var(--space-sm) var(--space-sm);
+  text-align: right;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mobile-table th:first-child,
+.mobile-table td:first-child {
+  text-align: left;
+}
+
+.mobile-table th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-muted);
+  padding-bottom: var(--space-md);
+}
+
+.mobile-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Over/under typical colors */
+.text-over {
+  color: #ef4444; /* Red - above typical */
+}
+
+.text-under {
+  color: #22c55e; /* Green - below typical */
 }
