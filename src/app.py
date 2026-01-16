@@ -59,6 +59,7 @@ def index():
 @app.get("/mobile")
 def mobile():
     """Serve the mobile-optimized frontend."""
+    return {"status": "ok"}
     return app.send_static_file("mobile.html")
 
 
