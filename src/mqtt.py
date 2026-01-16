@@ -87,8 +87,13 @@ if __name__ == "__main__":
     worker_thread.start()
     logger.info("✅ Started DB worker thread")
 
-    # Create and configure MQTT client
-    _mqtt_client = mqtt.Client(protocol=mqtt.MQTTv5, userdata=None, transport="tcp")
+    # Create and configure MQTT client with callback API version 2
+    _mqtt_client = mqtt.Client(
+        protocol=mqtt.MQTTv5,
+        userdata=None,
+        transport="tcp",
+        callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+    )
     _mqtt_client.on_connect = on_connect
     _mqtt_client.on_disconnect = on_disconnect
     _mqtt_client.on_message = on_message
