@@ -131,23 +131,46 @@ Open `http://localhost:5008`
 - Chart loading overlay
 - Button loading animation during refresh
 
+## Mobile Dashboard
+
+A simplified, mobile-optimized interface is available at `/mobile`. Mobile users (iPhone, Android) are automatically redirected; iPad users see the full desktop dashboard.
+
+### Mobile Features
+
+- **Lookback Period**: Manual input field to select number of days (default: 7, max: 365)
+- **Compact Chart**: Non-interactive chart showing power, energy, daily usage, and 30-day average
+- **Series Toggles**: Tap to show/hide chart series (Power, Meter, Daily, 30d Avg)
+- **Stats Cards**: Energy & cost (real vs typical), power statistics, data info
+- **Daily Breakdown Table**: Per-day usage with typical comparison and difference highlighting
+- **Desktop Link**: Easy navigation back to full dashboard
+
+### Mobile Detection
+
+Automatic redirect based on User-Agent:
+- **Redirected to mobile**: iPhone, Android, iPod, BlackBerry, Windows Phone
+- **Stay on desktop**: iPad, desktop browsers
+- **Manual access**: `/mobile` is always accessible directly
+
 ## Project Structure
 
 ```
 energy-monitor/
 ├── src/
-│   ├── app.py          # Flask entry point, API routes
+│   ├── app.py          # Flask entry point, API routes, mobile detection
 │   ├── database.py     # SQLAlchemy models, queries, stats
 │   ├── mqtt.py         # Standalone MQTT client service entry point
-│   ├── scheduler.py   # Standalone scheduler entry point (health check, git commit)
+│   ├── scheduler.py    # Standalone scheduler entry point (health check, git commit)
 │   ├── git_tool.py     # Auto-commit DB changes to git
 │   ├── helpers.py      # Time parsing utilities
 │   ├── config.py       # Configuration constants
 │   └── values.py       # Secret values (Telegram tokens)
 ├── static/
-│   ├── index.html      # Dashboard HTML
-│   ├── app.js          # Frontend: charting, interactions, live updates
-│   └── styles.css      # Styles with CSS custom properties
+│   ├── index.html      # Desktop dashboard HTML
+│   ├── mobile.html     # Mobile dashboard HTML
+│   ├── app.js          # Desktop frontend: charting, interactions, live updates
+│   ├── mobile.js       # Mobile frontend: simplified chart, stats, daily table
+│   ├── shared.js       # Shared utilities (formatting, colors, data processing)
+│   └── styles.css      # Styles with CSS custom properties (desktop + mobile)
 ├── data/
 │   └── energy.db       # SQLite database
 ├── tests/
@@ -155,7 +178,7 @@ energy-monitor/
 └── install/
     ├── install.sh                              # Raspberry Pi setup script
     ├── projects_energy-monitor.service         # systemd service for web app
-    ├── projects_energy-monitor_mqtt.service      # systemd service for MQTT client
+    ├── projects_energy-monitor_mqtt.service    # systemd service for MQTT client
     └── projects_energy-monitor_data-backup-scheduler.service # systemd service for scheduler
 ```
 
@@ -164,7 +187,8 @@ energy-monitor/
 
 | Endpoint              | Method | Description                                              |
 | --------------------- | ------ | -------------------------------------------------------- |
-| `/`                   | GET    | Serve web dashboard                                      |
+| `/`                   | GET    | Serve desktop dashboard (redirects mobile to `/mobile`)  |
+| `/mobile`             | GET    | Serve mobile-optimized dashboard                         |
 | `/api/readings`       | GET    | Fetch readings with optional time range                  |
 | `/api/latest_reading` | GET    | Get most recent reading                                  |
 | `/api/energy_summary` | GET    | Get avg daily usage, daily usage, and 30d moving average |

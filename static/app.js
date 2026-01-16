@@ -665,8 +665,12 @@
       
       updateChart();
       setConnection(true);
-      // ensure monthly/weekly/daily summaries refresh
-      updatePeriodSummaries();
+      
+      // Update period summaries only on incremental updates (polling)
+      // Initial load will call it once in the initialization .then() block
+      if (incremental) {
+        updatePeriodSummaries();
+      }
     } catch (e) {
       console.error(e);
       setConnection(false);
@@ -1184,27 +1188,37 @@
   showLoading();
   initChart();
   
-  // Fetch energy summary once at startup, then fetch readings
-  fetchEnergySummary()
-    .then(() => fetchReadings())
-    .then(() => {
+  // Load chart data and summary in parallel for faster initial render
+  // Use allSettled to ensure updatePeriodSummaries runs even if one fetch fails
+  Promise.allSettled([
+    fetchReadings(),      // Chart data
+    fetchEnergySummary()  // Daily averages for "Typical" column
+  ])
+    .then((results) => {
+      // Log any failures for debugging
+      const [readingsResult, summaryResult] = results;
+      if (readingsResult.status === "rejected") {
+        console.error("fetchReadings failed:", readingsResult.reason);
+      }
+      if (summaryResult.status === "rejected") {
+        console.error("fetchEnergySummary failed:", summaryResult.reason);
+      }
+      
       hideLoading();
       loadCostFromStorage();
-      updatePeriodSummaries();
       
       // Auto-apply default selection (entire loaded dataset) on initial load
       if (xVals.length > 0) {
         const startMs = xVals[0] * 1000;
         const endMs = xVals[xVals.length - 1] * 1000;
-        applySelectionRange(startMs, endMs, false); // false = don't clamp to data (we're using all of it)
+        applySelectionRange(startMs, endMs, false);
       }
       
+      // Always call updatePeriodSummaries - it will populate "Real" values
+      // even if fetchEnergySummary failed (avgDailyEnergyUsage would be null)
+      updatePeriodSummaries();
+      
       poll();
-    })
-    .catch((e) => {
-      console.error("Initial fetch failed:", e);
-      hideLoading();
-      setTimeout(poll, POLLING_MS);
     });
 
   function loadCostFromStorage() {
@@ -1235,44 +1249,67 @@
     const last7DaysMs = nowMs - (7 * 24 * 60 * 60 * 1000);
     const last1DayMs = nowMs - (24 * 60 * 60 * 1000);
 
-    try {
-      const [monthStats, weekStats, dayStats, latestReading] = await Promise.all([
-        fetchStats(last30DaysMs, nowMs),
-        fetchStats(last7DaysMs, nowMs),
-        fetchStats(last1DayMs, nowMs),
-        fetchLatestReading(),
-      ]);
+    // Use allSettled to log individual failures and still populate successful stats
+    const results = await Promise.allSettled([
+      fetchStats(last30DaysMs, nowMs),
+      fetchStats(last7DaysMs, nowMs),
+      fetchStats(last1DayMs, nowMs),
+      fetchLatestReading(),
+    ]);
 
+    const [monthResult, weekResult, dayResult, latestResult] = results;
+    const apiNames = ["30-day stats", "7-day stats", "1-day stats", "latest reading"];
+
+    // Log any failures with context
+    results.forEach((result, idx) => {
+      if (result.status === "rejected") {
+        console.error(`[updatePeriodSummaries] ${apiNames[idx]} failed:`, result.reason);
+      }
+    });
+
+    // Extract values (null if failed)
+    const monthStats = monthResult.status === "fulfilled" ? monthResult.value : null;
+    const weekStats = weekResult.status === "fulfilled" ? weekResult.value : null;
+    const dayStats = dayResult.status === "fulfilled" ? dayResult.value : null;
+    const latestReading = latestResult.status === "fulfilled" ? latestResult.value : null;
+
+    // Populate "Real" values from successful API calls
+    if (monthStats) {
       if (statMonthEnergy) statMonthEnergy.textContent = fmt.n(monthStats.energy_used_kwh, 2);
       if (statMonthCost) statMonthCost.textContent = fmt.n((monthStats.energy_used_kwh || 0) * costPerKwh, 2);
+    }
+    if (weekStats) {
       if (statWeekEnergy) statWeekEnergy.textContent = fmt.n(weekStats.energy_used_kwh, 2);
       if (statWeekCost) statWeekCost.textContent = fmt.n((weekStats.energy_used_kwh || 0) * costPerKwh, 2);
+    }
+    if (dayStats) {
       if (statDayEnergy) statDayEnergy.textContent = fmt.n(dayStats.energy_used_kwh, 2);
       if (statDayCost) statDayCost.textContent = fmt.n((dayStats.energy_used_kwh || 0) * costPerKwh, 2);
+    }
+    if (latestReading) {
       if (statCurrentConsumption) statCurrentConsumption.textContent = fmt.n(latestReading.energy_in_kwh, 2);
       if (statTotalCost) statTotalCost.textContent = fmt.n((latestReading.energy_in_kwh || 0) * costPerKwh, 2);
+    }
 
-      if (avgDailyEnergyUsage) {
-        const avg30Days = avgDailyEnergyUsage * 30;
-        const avg7Days = avgDailyEnergyUsage * 7;
-        const avg1Day = avgDailyEnergyUsage;
+    // Populate "Typical" values (depends on avgDailyEnergyUsage from fetchEnergySummary)
+    if (avgDailyEnergyUsage) {
+      const avg30Days = avgDailyEnergyUsage * 30;
+      const avg7Days = avgDailyEnergyUsage * 7;
+      const avg1Day = avgDailyEnergyUsage;
 
-        if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = fmt.n(avg30Days, 2);
-        if (statMonthAvgCost) statMonthAvgCost.textContent = fmt.n(avg30Days * costPerKwh, 2);
-        if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = fmt.n(avg7Days, 2);
-        if (statWeekAvgCost) statWeekAvgCost.textContent = fmt.n(avg7Days * costPerKwh, 2);
-        if (statDayAvgEnergy) statDayAvgEnergy.textContent = fmt.n(avg1Day, 2);
-        if (statDayAvgCost) statDayAvgCost.textContent = fmt.n(avg1Day * costPerKwh, 2);
-      } else {
-        if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = "–";
-        if (statMonthAvgCost) statMonthAvgCost.textContent = "–";
-        if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = "–";
-        if (statWeekAvgCost) statWeekAvgCost.textContent = "–";
-        if (statDayAvgEnergy) statDayAvgEnergy.textContent = "–";
-        if (statDayAvgCost) statDayAvgCost.textContent = "–";
-      }
-    } catch (e) {
-      console.error("Failed to update period summaries:", e);
+      if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = fmt.n(avg30Days, 2);
+      if (statMonthAvgCost) statMonthAvgCost.textContent = fmt.n(avg30Days * costPerKwh, 2);
+      if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = fmt.n(avg7Days, 2);
+      if (statWeekAvgCost) statWeekAvgCost.textContent = fmt.n(avg7Days * costPerKwh, 2);
+      if (statDayAvgEnergy) statDayAvgEnergy.textContent = fmt.n(avg1Day, 2);
+      if (statDayAvgCost) statDayAvgCost.textContent = fmt.n(avg1Day * costPerKwh, 2);
+    } else {
+      if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = "–";
+      if (statMonthAvgCost) statMonthAvgCost.textContent = "–";
+      if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = "–";
+      if (statWeekAvgCost) statWeekAvgCost.textContent = "–";
+      if (statDayAvgEnergy) statDayAvgEnergy.textContent = "–";
+      if (statDayAvgCost) statDayAvgCost.textContent = "–";
     }
   }
 
