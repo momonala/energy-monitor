@@ -164,9 +164,10 @@ energy-monitor/
 │   ├── helpers.py      # Time parsing utilities
 │   ├── config.py       # Configuration constants
 │   └── values.py       # Secret values (Telegram tokens)
-├── static/
+├── templates/
 │   ├── index.html      # Desktop dashboard HTML
-│   ├── mobile.html     # Mobile dashboard HTML
+│   └── mobile.html     # Mobile dashboard HTML
+├── static/
 │   ├── app.js          # Desktop frontend: charting, interactions, live updates
 │   ├── mobile.js       # Mobile frontend: simplified chart, stats, daily table
 │   ├── shared.js       # Shared utilities (formatting, colors, data processing)
