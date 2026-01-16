@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Energy Monitor</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+    <link rel="shortcut icon" href="/static/favicon.ico">
+  </head>
+  <body class="mobile-body">
+    <header class="mobile-header">
+      <div class="branding">
+        <div class="logo-glow"></div>
+        <h1>Energy Monitor</h1>
+      </div>
+      <div class="status">
+        <span id="status-connection" class="status-pill">Connecting...</span>
+      </div>
+    </header>
+
+    <main class="mobile-main">
+      <!-- Days Input -->
+      <section class="mobile-input-section card">
+        <label for="days-input" class="mobile-input-label">Lookback Period</label>
+        <div class="mobile-input-row">
+          <input 
+            id="days-input" 
+            type="number" 
+            value="7" 
+            min="1" 
+            max="365" 
+            inputmode="numeric"
+            class="mobile-days-input"
+          />
+          <span class="mobile-input-suffix">days</span>
+        </div>
+      </section>
+
+      <!-- Chart Card -->
+      <section class="mobile-chart-card card">
+        <div class="mobile-chart-wrapper">
+          <div id="chart"></div>
+          <div id="chart-loading" class="chart-loading">Loading chart...</div>
+        </div>
+        <div class="mobile-chart-toggles">
+          <button class="mobile-toggle mobile-toggle-power active" data-series="1">Power</button>
+          <button class="mobile-toggle mobile-toggle-energy active" data-series="2">Meter</button>
+          <button class="mobile-toggle mobile-toggle-daily active" data-series="3">Daily</button>
+          <button class="mobile-toggle mobile-toggle-typical active" data-series="4">30d Avg</button>
+        </div>
+      </section>
+
+      <!-- Stats Cards -->
+      <section class="mobile-stats-grid">
+        <!-- Energy & Cost Card -->
+        <div class="mobile-stat-card card">
+          <div class="mobile-stat-title">Energy & Cost</div>
+          <div class="mobile-stat-row mobile-stat-header">
+            <span class="mobile-stat-label"></span>
+            <span class="mobile-stat-col-header text-energy">Real</span>
+            <span class="mobile-stat-col-header text-avg">Typical</span>
+          </div>
+          <div class="mobile-stat-row mobile-stat-row-3col">
+            <span class="mobile-stat-label">kWh</span>
+            <span class="mobile-stat-value text-energy"><span id="stat-energy">–</span></span>
+            <span class="mobile-stat-value text-avg"><span id="stat-typical-energy">–</span></span>
+          </div>
+          <div class="mobile-stat-row mobile-stat-row-3col">
+            <span class="mobile-stat-label">Cost €</span>
+            <span class="mobile-stat-value"><span id="stat-cost">–</span></span>
+            <span class="mobile-stat-value text-avg-light"><span id="stat-typical-cost">–</span></span>
+          </div>
+        </div>
+
+        <!-- Power Statistics Card -->
+        <div class="mobile-stat-card card">
+          <div class="mobile-stat-title">Power Statistics</div>
+          <div class="mobile-stat-row">
+            <span class="mobile-stat-label text-power">Average</span>
+            <span class="mobile-stat-value text-power"><span id="stat-avg">–</span> W</span>
+          </div>
+          <div class="mobile-stat-row">
+            <span class="mobile-stat-label text-power">Maximum</span>
+            <span class="mobile-stat-value text-power"><span id="stat-max">–</span> W</span>
+          </div>
+          <div class="mobile-stat-row">
+            <span class="mobile-stat-label text-power">Minimum</span>
+            <span class="mobile-stat-value text-power"><span id="stat-min">–</span> W</span>
+          </div>
+        </div>
+
+        <!-- Data Info Card -->
+        <div class="mobile-stat-card card">
+          <div class="mobile-stat-title">Data Info</div>
+          <div class="mobile-stat-row">
+            <span class="mobile-stat-label">Data Points</span>
+            <span class="mobile-stat-value"><span id="stat-count">–</span></span>
+          </div>
+          <div class="mobile-stat-row">
+            <span class="mobile-stat-label">Time Range</span>
+            <span class="mobile-stat-value"><span id="stat-range">–</span></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Daily Data Table -->
+      <section class="mobile-table-card card">
+        <div class="mobile-stat-title" id="daily-table-title">Daily Breakdown</div>
+        <div class="mobile-table-wrapper">
+          <table class="mobile-table" id="daily-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th class="text-daily-energy">kWh</th>
+                <th>€</th>
+                <th>+/-</th>
+              </tr>
+            </thead>
+            <tbody id="daily-table-body">
+              <!-- Populated by JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Link to desktop version -->
+      <footer class="mobile-footer">
+        <a href="/" class="mobile-desktop-link">View Desktop Dashboard →</a>
+      </footer>
+    </main>
+
+    <script src="/static/shared.js"></script>
+    <script src="/static/mobile.js"></script>
+  </body>
+</html>

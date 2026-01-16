@@ -7,6 +7,7 @@ from pathlib import Path
 from flask import Flask
 from flask import jsonify
 from flask import redirect
+from flask import render_template
 from flask import request
 from flask_compress import Compress
 
@@ -29,9 +30,13 @@ from src.mqtt import get_mqtt_client
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Point to static folder at project root (one level up from src/)
-static_folder = Path(__file__).parent.parent / "static"
-app = Flask(__name__, static_folder=str(static_folder))
+# Point to static and templates folders at project root (one level up from src/)
+project_root = Path(__file__).parent.parent
+app = Flask(
+    __name__,
+    static_folder=str(project_root / "static"),
+    template_folder=str(project_root / "templates"),
+)
 Compress(app)  # Enable gzip compression for responses > 500 bytes
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
@@ -53,13 +58,13 @@ def index():
     """Serve the frontend. Redirect mobile users to /mobile."""
     if is_mobile_user_agent():
         return redirect("/mobile")
-    return app.send_static_file("index.html")
+    return render_template("index.html")
 
 
 @app.get("/mobile")
 def mobile():
     """Serve the mobile-optimized frontend."""
-    return app.send_static_file("mobile.html")
+    return render_template("mobile.html")
 
 
 @app.get("/api/readings")
