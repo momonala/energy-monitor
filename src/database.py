@@ -12,7 +12,9 @@ from sqlalchemy import Float
 from sqlalchemy import String
 from sqlalchemy import Text
 from sqlalchemy import create_engine
+from sqlalchemy import event
 from sqlalchemy import func
+from sqlalchemy import text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -24,10 +26,28 @@ from src.telegram import report_missing_data_to_telegram
 logger = logging.getLogger(__name__)
 
 
+# Configure engine with timeout and connection pool settings for better concurrency
 engine = create_engine(
     DATABASE_URL,
     future=True,
+    connect_args={
+        "timeout": 20.0,  # Wait up to 20 seconds for lock to be released
+        "check_same_thread": False,  # Allow multi-threaded access
+    },
+    pool_pre_ping=True,  # Verify connections before using
+    pool_recycle=3600,  # Recycle connections after 1 hour
 )
+
+
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_conn, connection_record):
+    """Enable WAL mode for better concurrency."""
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")  # Faster than FULL, still safe
+    cursor.execute("PRAGMA busy_timeout=20000")  # 20 second timeout
+    cursor.close()
+
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 Base = declarative_base()
@@ -66,7 +86,15 @@ class EnergyReading(Base):
 
 
 def init_db():
-    """Create all tables if they do not exist."""
+    """Create all tables if they do not exist and enable WAL mode."""
+    # Ensure WAL mode is enabled (the event listener handles this for new connections,
+    # but we also set it explicitly here for existing databases)
+    with engine.connect() as conn:
+        conn.execute(text("PRAGMA journal_mode=WAL"))
+        conn.execute(text("PRAGMA synchronous=NORMAL"))
+        conn.execute(text("PRAGMA busy_timeout=20000"))
+        conn.commit()
+
     Base.metadata.create_all(bind=engine)
     logger.info("Created all tables")
 
