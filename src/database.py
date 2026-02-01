@@ -169,28 +169,38 @@ def get_readings(
     end: datetime | None = datetime.now(local_timezone()),
 ) -> list[dict]:
     """
-    Fetch readings in ascending order. Optionally filter by time range.
+    Fetch readings in 2-min buckets (max per bucket). Optionally filter by time range.
     Returns a list of dicts with timestamp (ms since epoch), power_watts, and energy_in_kwh.
+    Aggregation is done in SQL so we never load full raw rows for large ranges.
     """
-    # Convert to local timezone
-    with SessionLocal() as session:
-        query = session.query(EnergyReading).order_by(EnergyReading.timestamp.asc())
-        if start is not None:
-            start = start.astimezone(local_timezone())
-            query = query.filter(EnergyReading.timestamp >= start)
-        if end is not None:
-            end = end.astimezone(local_timezone())
-            query = query.filter(EnergyReading.timestamp <= end)
-        rows = query.all()
+    tz = local_timezone()
+    start_bound = start.astimezone(tz) if start is not None else datetime.now(tz) - timedelta(weeks=52)
+    end_bound = end.astimezone(tz) if end is not None else datetime.now(tz)
 
-    logger.debug(
-        f"""⚠️ [get_readings] Found {len(rows)} readings for {start=} {end=}:
-    ⚠️ [get_readings] oldest reading: {rows[0].timestamp.isoformat()}
-    ⚠️ [get_readings] latest reading: {rows[-1].timestamp.isoformat()}"""
-    )
+    bucket = func.strftime("%s", EnergyReading.timestamp) / 120
+    with SessionLocal() as session:
+        rows = (
+            session.query(
+                func.max(EnergyReading.timestamp).label("timestamp"),
+                func.max(EnergyReading.power_watts).label("power_watts"),
+                func.max(EnergyReading.energy_in_kwh).label("energy_in_kwh"),
+            )
+            .filter(
+                EnergyReading.timestamp >= start_bound,
+                EnergyReading.timestamp <= end_bound,
+            )
+            .group_by(bucket)
+            .order_by(func.max(EnergyReading.timestamp))
+            .all()
+        )
+
+    if rows:
+        logger.debug(
+            f"[get_readings] Found {len(rows)} 2-min buckets for {start=} {end=}: "
+            f"oldest {rows[0][0]}, latest {rows[-1][0]}"
+        )
     result: list[dict] = []
     for r in rows:
-        # Convert to ms since epoch for charting
         ts = int(r.timestamp.timestamp() * 1000)
         result.append(
             {
