@@ -17,6 +17,8 @@
   const btnLastHour = document.getElementById("btn-last-hour");
   const btnLastDay = document.getElementById("btn-last-day");
   const btnRefresh = document.getElementById("btn-refresh");
+  const btnResolution1min = document.getElementById("btn-resolution-1min");
+  const btnResolutionRaw = document.getElementById("btn-resolution-raw");
   // Trace toggle buttons
   const btnTogglePower = document.getElementById("btn-toggle-power");
   const btnToggleDaily = document.getElementById("btn-toggle-daily");
@@ -73,6 +75,7 @@
   let avgDailyEnergyUsage = null; // kWh per day from historical data
   let powerScaleMode = 'auto'; // 'auto' or 'fixed' - controls power Y-axis scaling
   let avgMode = '30d'; // '30d' for moving average or 'total' for flat line
+  let readingsInterval = 'minute'; // 'minute' (default) | 'raw' for chart resolution
   // Track series visibility: series index -> visible (true) or hidden (false)
   const seriesVisibility = {
     1: true, // Live Power
@@ -488,11 +491,16 @@
   }
 
   /**
-   * Fetch energy summary (avg daily + daily usage + 30d moving avg) once at startup.
+   * Fetch energy summary (avg daily + daily usage + 30d moving avg).
+   * Uses start/end (ms); defaults to last 90 days if not provided.
    */
-  async function fetchEnergySummary() {
+  async function fetchEnergySummary({ startMs, endMs } = {}) {
+    const now = Date.now();
+    const defaultRangeMs = 90 * 24 * 60 * 60 * 1000;
+    const start = startMs ?? now - defaultRangeMs;
+    const end = endMs ?? now;
     try {
-      const res = await fetch("/api/energy_summary", { cache: "no-cache" });
+      const res = await fetch(`/api/energy_summary?start=${start}&end=${end}`, { cache: "no-cache" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       avgDailyEnergyUsage = data.avg_daily;
@@ -568,17 +576,24 @@
     updateLiveIndicator();
   }
 
-  async function fetchReadings({ start = null, end = null, incremental = false } = {}) {
+  async function fetchReadings({ start = null, end = null, incremental = false, interval } = {}) {
     const qs = new URLSearchParams();
-    
-    // For incremental updates, only fetch data newer than what we have
+    const useInterval = interval ?? readingsInterval;
+
     if (incremental && lastDataTimestamp) {
       qs.set("start", String(lastDataTimestamp + 1));
-    } else if (start) {
-      qs.set("start", String(start));
+    } else {
+      const now = Date.now();
+      const defaultRangeMs = 90 * 24 * 60 * 60 * 1000;
+      const startVal = start ?? now - defaultRangeMs;
+      const endVal = end ?? now;
+      qs.set("start", String(startVal));
+      qs.set("end", String(endVal));
+      if (useInterval === "minute" || useInterval === "hour") {
+        qs.set("interval", useInterval);
+      }
     }
-    if (end) qs.set("end", String(end));
-    
+
     try {
       const res = await fetch(`/api/readings?${qs.toString()}`, { cache: "no-cache" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1125,6 +1140,46 @@
     const now = new Date();
     const start = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), 0);
     selectCalendarRange(start.getTime(), now.getTime());
+  });
+
+  async function refetchWithResolution() {
+    showLoading();
+    try {
+      const startMs = selection.start ?? null;
+      const endMs = selection.end ?? null;
+      await fetchReadings({ start: startMs, end: endMs });
+      if (u && xVals.length > 0) {
+        const startSec = xVals[0];
+        const endSec = xVals[xVals.length - 1];
+        applySelectionRange(startSec * 1000, endSec * 1000, false);
+      }
+      updateChart();
+    } finally {
+      hideLoading();
+    }
+  }
+
+  if (btnResolution1min) btnResolution1min.addEventListener("click", async () => {
+    if (readingsInterval === "minute") return;
+    readingsInterval = "minute";
+    btnResolution1min.classList.add("active");
+    btnResolution1min.setAttribute("aria-pressed", "true");
+    if (btnResolutionRaw) {
+      btnResolutionRaw.classList.remove("active");
+      btnResolutionRaw.setAttribute("aria-pressed", "false");
+    }
+    await refetchWithResolution();
+  });
+  if (btnResolutionRaw) btnResolutionRaw.addEventListener("click", async () => {
+    if (readingsInterval === "raw") return;
+    readingsInterval = "raw";
+    btnResolutionRaw.classList.add("active");
+    btnResolutionRaw.setAttribute("aria-pressed", "true");
+    if (btnResolution1min) {
+      btnResolution1min.classList.remove("active");
+      btnResolution1min.setAttribute("aria-pressed", "false");
+    }
+    await refetchWithResolution();
   });
 
   async function poll() {
