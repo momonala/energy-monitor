@@ -236,7 +236,7 @@
         showErrorInitial();
       });
 
-    fetch("/api/energy_summary", { cache: "no-cache" })
+    fetch(`/api/energy_summary?start=${startMs}&end=${now}`, { cache: "no-cache" })
       .then((res) => {
         if (!res.ok) throw new Error(`Summary HTTP ${res.status}`);
         return res.json();
@@ -272,8 +272,8 @@
 
     try {
       const [readingsRes, summaryRes] = await Promise.all([
-        fetch(`/api/readings?start=${startMs}&end=${now}`, { cache: "no-cache", signal }),
-        fetch("/api/energy_summary", { cache: "no-cache", signal }),
+        fetch(`/api/readings?start=${startMs}&end=${now}&interval=hour`, { cache: "no-cache", signal }),
+        fetch(`/api/energy_summary?start=${startMs}&end=${now}`, { cache: "no-cache", signal }),
       ]);
 
       if (!readingsRes.ok) throw new Error(`Readings HTTP ${readingsRes.status}`);

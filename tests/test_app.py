@@ -99,3 +99,65 @@ def test_clear_cache_returns_previous_stats(client):
         assert data["cleared"] is True
         assert data["previous"]["hits"] == 10
         assert data["previous"]["misses"] == 2
+
+
+@pytest.mark.parametrize(
+    "start,end,expected_status",
+    [
+        (None, None, 400),
+        ("1704067200000", None, 400),
+        (None, "1704153600000", 400),
+        ("1704067200000", "1704153600000", 200),
+    ],
+)
+def test_api_energy_summary_requires_start_and_end(client, start, end, expected_status):
+    """Energy summary endpoint requires start and end query params."""
+    query = []
+    if start:
+        query.append(f"start={start}")
+    if end:
+        query.append(f"end={end}")
+    query_string = "&".join(query)
+
+    with patch("src.app.get_daily_energy_usage_from_db") as mock_daily:
+        with patch("src.app.get_moving_avg_daily_usage", return_value=[]):
+            mock_daily.return_value = []
+            response = client.get(f"/api/energy_summary?{query_string}")
+            assert response.status_code == expected_status
+            if expected_status == 200:
+                data = response.get_json()
+                assert "avg_daily" in data
+                assert "daily" in data
+                assert "moving_avg_30d" in data
+
+
+@pytest.mark.parametrize(
+    "interval,expected_status",
+    [
+        ("hour", 200),
+        ("minute", 200),
+        ("raw", 200),
+        ("", 200),
+    ],
+)
+def test_api_readings_interval_param(client, interval, expected_status):
+    """Readings endpoint accepts interval=hour|minute|raw; same response shape {t,p,e}."""
+    qs = "start=1704067200000&end=1704153600000"
+    if interval:
+        qs += f"&interval={interval}"
+
+    with patch("src.app.get_readings", return_value=[]):
+        with patch("src.app.get_readings_downsampled", return_value=[]):
+            response = client.get(f"/api/readings?{qs}")
+            assert response.status_code == expected_status
+            data = response.get_json()
+            assert isinstance(data, list)
+
+
+def test_api_readings_interval_hour_minute_requires_start_end(client):
+    """Readings with interval=hour or minute returns 400 if start/end missing."""
+    with patch("src.app.get_readings_downsampled", return_value=[]):
+        response = client.get("/api/readings?interval=hour")
+        assert response.status_code == 400
+        data = response.get_json()
+        assert "error" in data
