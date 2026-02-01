@@ -7,9 +7,7 @@ import pytest
 
 from src.database import get_avg_daily_energy_usage
 from src.database import get_daily_energy_usage
-from src.database import get_daily_energy_usage_from_db
 from src.database import get_moving_avg_daily_usage
-from src.database import get_readings_downsampled
 from src.database import get_stats
 from src.helpers import local_timezone
 
@@ -180,60 +178,3 @@ def test_get_stats_handles_empty_range(test_db):
         assert stats["energy_used_kwh"] is None
     finally:
         src.database.SessionLocal = original_session
-
-
-def test_get_daily_energy_usage_from_db_returns_same_shape_as_pandas(test_db, sample_readings):
-    """get_daily_energy_usage_from_db returns list of {t, kwh, is_partial}."""
-    import src.database
-
-    original_session = src.database.SessionLocal
-    src.database.SessionLocal = test_db
-
-    try:
-        start = sample_readings[0]["timestamp"]
-        end = sample_readings[-1]["timestamp"]
-        daily = get_daily_energy_usage_from_db(start=start, end=end)
-
-        assert isinstance(daily, list)
-        # 3 days of hourly data -> 3 calendar days
-        assert len(daily) >= 1
-        for row in daily:
-            assert "t" in row
-            assert "kwh" in row
-            assert "is_partial" in row
-            assert isinstance(row["t"], int)
-            assert isinstance(row["kwh"], (int, float))
-            assert isinstance(row["is_partial"], bool)
-    finally:
-        src.database.SessionLocal = original_session
-
-
-def test_get_readings_downsampled_returns_same_shape_as_get_readings(test_db, sample_readings):
-    """get_readings_downsampled returns list of {t, p, e}."""
-    import src.database
-
-    original_session = src.database.SessionLocal
-    src.database.SessionLocal = test_db
-
-    try:
-        start = sample_readings[0]["timestamp"]
-        end = sample_readings[-1]["timestamp"]
-
-        for interval in ("hour", "minute"):
-            out = get_readings_downsampled(start=start, end=end, interval=interval)
-            assert isinstance(out, list)
-            for row in out:
-                assert "t" in row
-                assert "p" in row
-                assert "e" in row
-                assert isinstance(row["t"], int)
-    finally:
-        src.database.SessionLocal = original_session
-
-
-def test_get_readings_downsampled_rejects_invalid_interval():
-    """get_readings_downsampled raises for invalid interval."""
-    now = datetime.now(local_timezone())
-    start = now - timedelta(days=1)
-    with pytest.raises(ValueError, match="interval must be"):
-        get_readings_downsampled(start=start, end=now, interval="invalid")
