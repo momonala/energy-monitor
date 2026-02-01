@@ -1064,11 +1064,11 @@
         }
       }
       
-      // Update button appearance
+      // Update button appearance (dim when trace is off; keep button visible so user can toggle back)
       if (newVisibility) {
-        btn.classList.remove("hidden");
+        btn.classList.remove("inactive");
       } else {
-        btn.classList.add("hidden");
+        btn.classList.add("inactive");
       }
     });
   }

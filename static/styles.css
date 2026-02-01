@@ -325,8 +325,9 @@ body {
   color: rgb(235, 133, 37);
 }
 
-.btn-trace.hidden {
-  opacity: 0.3;
+/* Dimmed when trace is toggled off; button stays visible so it can be toggled back on */
+.btn-trace.inactive {
+  opacity: 0.35;
 }
 
 .btn-loading {
