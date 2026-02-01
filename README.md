@@ -124,6 +124,7 @@ Open `http://localhost:5008`
 - **📊 Auto / Fixed**: Toggle power axis between auto-scaling and fixed 0-2000W range
 - **📈 30d / Total**: Toggle daily usage baseline between 30-day moving average (adaptive) and total average (flat line)
 - **Hour / Day / Week / Month / Year**: Quick zoom to time range
+- **Resolution: 1 min / All data**: Chart data resolution (1 min = faster; All data = full resolution)
 
 ### Loading States
 
@@ -190,9 +191,9 @@ energy-monitor/
 | --------------------- | ------ | -------------------------------------------------------- |
 | `/`                   | GET    | Serve desktop dashboard (redirects mobile to `/mobile`)  |
 | `/mobile`             | GET    | Serve mobile-optimized dashboard                         |
-| `/api/readings`       | GET    | Fetch readings with optional time range                  |
+| `/api/readings`       | GET    | Fetch readings; optional time range and `interval` (hour/minute/raw) |
 | `/api/latest_reading` | GET    | Get most recent reading                                  |
-| `/api/energy_summary` | GET    | Get avg daily usage, daily usage, and 30d moving average |
+| `/api/energy_summary` | GET    | Get avg daily, daily usage, 30d moving avg (requires `start`, `end`) |
 | `/api/stats`          | GET    | Compute statistics for a time range                      |
 | `/status`             | GET    | Service health, connection status, job info              |
 
@@ -201,9 +202,9 @@ energy-monitor/
 
 Query params:
 
-- `start` - ISO-8601 string or ms since epoch (optional)
+- `start` - ISO-8601 string or ms since epoch (optional; required when `interval` is `hour` or `minute`)
 - `end` - ISO-8601 string or ms since epoch (optional)
-- `after` - Unix timestamp; returns only records after this time (for incremental updates)
+- `interval` - `hour` | `minute` | `raw` (optional, default `raw`). When `hour` or `minute`, returns one point per hour or per minute (same `{t,p,e}` shape). Use for faster chart loading on mobile (`hour`) or desktop (`minute`). Omit or use `raw` for full resolution.
 
 Response:
 
@@ -219,7 +220,12 @@ Response:
 
 ### `/api/energy_summary`
 
-No parameters required.
+Query params (required):
+
+- `start` - ms since epoch (start of range)
+- `end` - ms since epoch (end of range)
+
+`daily` and `moving_avg_30d` are computed for the requested range only. `avg_daily` (typical usage) is always based on the last 52 weeks of data.
 
 Response:
 
