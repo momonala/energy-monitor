@@ -130,9 +130,8 @@ body {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.status-pill--power {
-  color: var(--color-power);
-  border-color: var(--color-power);
+.hidden {
+  display: none;
 }
 
 /* Mobile link in header */
@@ -642,6 +641,32 @@ body {
   gap: var(--space-md);
 }
 
+.mobile-days-select {
+  flex: 1;
+  max-width: 160px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  padding: var(--space-md);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a3a3a3' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-md) center;
+  padding-right: 2rem;
+}
+
+.mobile-days-select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(0, 255, 81, 0.2);
+}
+
 .mobile-days-input {
   flex: 1;
   max-width: 120px;
@@ -680,6 +705,36 @@ body {
 /* Mobile chart card */
 .mobile-chart-card {
   padding: var(--space-md);
+}
+
+.mobile-chart-card .js-chart-content {
+  display: none;
+}
+
+.mobile-chart-card .js-chart-content.is-visible {
+  display: block;
+}
+
+.mobile-btn-show-chart {
+  display: block;
+  width: 100%;
+  padding: var(--space-lg);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+}
+
+.mobile-btn-show-chart:hover {
+  border-color: var(--color-border-hover);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.mobile-btn-show-chart:active {
+  transform: scale(0.98);
 }
 
 .mobile-chart-wrapper {
