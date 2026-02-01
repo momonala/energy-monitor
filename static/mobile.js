@@ -24,7 +24,10 @@
   const statRange = document.getElementById("stat-range");
   const dailyTableBody = document.getElementById("daily-table-body");
   const dailyTableTitle = document.getElementById("daily-table-title");
-  const badgeCurrentPower = document.getElementById("badge-current-power");
+  const statCurrentPower = document.getElementById("stat-current-power");
+  const btnShowChart = document.getElementById("btn-show-chart");
+  const chartContent = document.querySelector(".js-chart-content");
+  const dailyTableSection = document.querySelector(".js-daily-table-section");
 
   // State
   let u = null; // uPlot instance
@@ -37,7 +40,11 @@
   let movingAvgData = [];
   let avgDailyEnergyUsage = null;
   let costPerKwh = loadCostPerKwh();
-  let debounceTimer = null;
+  let chartLoaded = false;
+  let chartAbortController = null;
+  let lastStats = null;
+  let lastStartMs = null;
+  let lastEndMs = null;
 
   // Series visibility: index -> visible
   const seriesVisibility = {
@@ -186,48 +193,135 @@
   // --------------------------------------------------------------------------
   // Data Fetching
   // --------------------------------------------------------------------------
-  async function fetchData(days) {
+  function updateCurrentPowerRow(latestReading) {
+    if (!statCurrentPower) return;
+    const kwh = latestReading?.energy_in_kwh;
+    statCurrentPower.textContent = kwh != null ? `${Fmt.n(kwh, 2)} kWh` : "–";
+  }
+
+  /**
+   * Fire latest_reading, stats, and energy_summary independently; update UI as each resolves.
+   * Table is shown by default (energy_summary); chart stays lazy (readings only when "Show chart").
+   */
+  function loadInitialData(days) {
     const now = Date.now();
     const startMs = now - days * 24 * 60 * 60 * 1000;
 
+    fetch("/api/latest_reading", { cache: "no-cache" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        updateCurrentPowerRow(data);
+        setConnectionStatus(statusConn, data != null);
+      })
+      .catch((e) => {
+        console.error("Latest reading fetch error:", e);
+        updateCurrentPowerRow(null);
+        setConnectionStatus(statusConn, false);
+      });
+
+    fetch(`/api/stats?start=${startMs}&end=${now}`, { cache: "no-cache" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Stats HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((statsData) => {
+        lastStats = statsData.stats;
+        lastStartMs = startMs;
+        lastEndMs = now;
+        updateStats(lastStats, startMs, now);
+      })
+      .catch((e) => {
+        console.error("Stats fetch error:", e);
+        setConnectionStatus(statusConn, false);
+        showErrorInitial();
+      });
+
+    fetch("/api/energy_summary", { cache: "no-cache" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Summary HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((summaryData) => {
+        dailyEnergyData = summaryData.daily || [];
+        movingAvgData = summaryData.moving_avg_30d || [];
+        avgDailyEnergyUsage = summaryData.avg_daily || null;
+        updateDailyTable(startMs, now);
+        if (lastStats != null && lastStartMs != null && lastEndMs != null) {
+          updateStats(lastStats, lastStartMs, lastEndMs);
+        }
+      })
+      .catch((e) => {
+        console.error("Energy summary fetch error:", e);
+      });
+  }
+
+  /**
+   * Fetch readings + energy_summary, then render chart and daily table.
+   * Call only when user has clicked "Show chart" or when days change and chart is already visible.
+   */
+  async function fetchChartData(days) {
+    const now = Date.now();
+    const startMs = now - days * 24 * 60 * 60 * 1000;
+
+    chartAbortController = new AbortController();
+    const signal = chartAbortController.signal;
+
+    if (chartContent) chartContent.classList.add("is-visible");
+    if (btnShowChart) btnShowChart.textContent = "Hide chart";
     showLoading();
 
     try {
-      const [readingsRes, statsRes, summaryRes, latestRes] = await Promise.all([
-        fetch(`/api/readings?start=${startMs}&end=${now}`, { cache: "no-cache" }),
-        fetch(`/api/stats?start=${startMs}&end=${now}`, { cache: "no-cache" }),
-        fetch("/api/energy_summary", { cache: "no-cache" }),
-        fetch("/api/latest_reading", { cache: "no-cache" }),
+      const [readingsRes, summaryRes] = await Promise.all([
+        fetch(`/api/readings?start=${startMs}&end=${now}`, { cache: "no-cache", signal }),
+        fetch("/api/energy_summary", { cache: "no-cache", signal }),
       ]);
 
       if (!readingsRes.ok) throw new Error(`Readings HTTP ${readingsRes.status}`);
-      if (!statsRes.ok) throw new Error(`Stats HTTP ${statsRes.status}`);
       if (!summaryRes.ok) throw new Error(`Summary HTTP ${summaryRes.status}`);
 
       const readings = await readingsRes.json();
-      const statsData = await statsRes.json();
       const summaryData = await summaryRes.json();
-      const latestReading = latestRes.ok ? await latestRes.json() : null;
 
       dailyEnergyData = summaryData.daily || [];
       movingAvgData = summaryData.moving_avg_30d || [];
       avgDailyEnergyUsage = summaryData.avg_daily || null;
 
       processReadings(readings);
-      updateStats(statsData.stats, startMs, now);
+      updateChart();
       updateDailyTable(startMs, now);
-      if (badgeCurrentPower) {
-        const w = latestReading?.power_watts;
-        badgeCurrentPower.textContent = w != null ? `${Fmt.n(w, 0)} W` : "–";
+      if (lastStats != null && lastStartMs != null && lastEndMs != null) {
+        updateStats(lastStats, lastStartMs, lastEndMs);
       }
+      chartLoaded = true;
       setConnectionStatus(statusConn, true);
     } catch (e) {
-      console.error("Fetch error:", e);
+      if (e.name === "AbortError") {
+        return;
+      }
+      console.error("Chart fetch error:", e);
       setConnectionStatus(statusConn, false);
-      showError();
+      if (btnShowChart) btnShowChart.textContent = "Show chart";
+      if (chartContent) chartContent.classList.remove("is-visible");
+      chartLoaded = false;
     } finally {
+      chartAbortController = null;
       hideLoading();
     }
+  }
+
+  function hideChart() {
+    if (chartAbortController) {
+      chartAbortController.abort();
+      chartAbortController = null;
+    }
+    if (btnShowChart) btnShowChart.textContent = "Show chart";
+    if (chartContent) chartContent.classList.remove("is-visible");
+    chartLoaded = false;
+    if (u) {
+      u.destroy();
+      u = null;
+    }
+    hideLoading();
   }
 
   function processReadings(rows) {
@@ -355,8 +449,8 @@
     dailyTableBody.innerHTML = rows.join("");
   }
 
-  function showError() {
-    statEnergy.textContent = "Error";
+  function showErrorInitial() {
+    statEnergy.textContent = "–";
     statCost.textContent = "–";
     statTypicalEnergy.textContent = "–";
     statTypicalCost.textContent = "–";
@@ -365,8 +459,7 @@
     statMin.textContent = "–";
     statCount.textContent = "–";
     statRange.textContent = "–";
-    if (badgeCurrentPower) badgeCurrentPower.textContent = "–";
-    if (dailyTableBody) dailyTableBody.innerHTML = "";
+    updateCurrentPowerRow(null);
   }
 
   // --------------------------------------------------------------------------
@@ -384,21 +477,9 @@
   // Input Handling
   // --------------------------------------------------------------------------
   function handleDaysChange() {
-    const value = parseInt(daysInput.value, 10);
-    if (Number.isNaN(value) || value < 1) {
-      daysInput.value = 1;
-      fetchData(1);
-    } else if (value > 365) {
-      daysInput.value = 365;
-      fetchData(365);
-    } else {
-      fetchData(value);
-    }
-  }
-
-  function debouncedDaysChange() {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(handleDaysChange, 500);
+    const value = parseInt(daysInput.value, 10) || 7;
+    loadInitialData(value);
+    if (chartLoaded) fetchChartData(value);
   }
 
   // --------------------------------------------------------------------------
@@ -415,15 +496,24 @@
   // Initialization
   // --------------------------------------------------------------------------
   function init() {
-    daysInput.addEventListener("input", debouncedDaysChange);
     daysInput.addEventListener("change", handleDaysChange);
     window.addEventListener("resize", handleResize);
 
-    // Set up chart series toggle buttons
     setupToggleButtons();
 
+    if (btnShowChart) {
+      btnShowChart.addEventListener("click", () => {
+        if (chartLoaded) {
+          hideChart();
+        } else {
+          const days = parseInt(daysInput.value, 10) || 7;
+          fetchChartData(days);
+        }
+      });
+    }
+
     const initialDays = parseInt(daysInput.value, 10) || 7;
-    fetchData(initialDays);
+    loadInitialData(initialDays);
   }
 
   init();
