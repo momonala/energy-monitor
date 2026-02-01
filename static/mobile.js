@@ -24,6 +24,7 @@
   const statRange = document.getElementById("stat-range");
   const dailyTableBody = document.getElementById("daily-table-body");
   const dailyTableTitle = document.getElementById("daily-table-title");
+  const badgeCurrentPower = document.getElementById("badge-current-power");
 
   // State
   let u = null; // uPlot instance
@@ -192,10 +193,11 @@
     showLoading();
 
     try {
-      const [readingsRes, statsRes, summaryRes] = await Promise.all([
+      const [readingsRes, statsRes, summaryRes, latestRes] = await Promise.all([
         fetch(`/api/readings?start=${startMs}&end=${now}`, { cache: "no-cache" }),
         fetch(`/api/stats?start=${startMs}&end=${now}`, { cache: "no-cache" }),
         fetch("/api/energy_summary", { cache: "no-cache" }),
+        fetch("/api/latest_reading", { cache: "no-cache" }),
       ]);
 
       if (!readingsRes.ok) throw new Error(`Readings HTTP ${readingsRes.status}`);
@@ -205,6 +207,7 @@
       const readings = await readingsRes.json();
       const statsData = await statsRes.json();
       const summaryData = await summaryRes.json();
+      const latestReading = latestRes.ok ? await latestRes.json() : null;
 
       dailyEnergyData = summaryData.daily || [];
       movingAvgData = summaryData.moving_avg_30d || [];
@@ -213,6 +216,10 @@
       processReadings(readings);
       updateStats(statsData.stats, startMs, now);
       updateDailyTable(startMs, now);
+      if (badgeCurrentPower) {
+        const w = latestReading?.power_watts;
+        badgeCurrentPower.textContent = w != null ? `${Fmt.n(w, 0)} W` : "–";
+      }
       setConnectionStatus(statusConn, true);
     } catch (e) {
       console.error("Fetch error:", e);
@@ -358,6 +365,7 @@
     statMin.textContent = "–";
     statCount.textContent = "–";
     statRange.textContent = "–";
+    if (badgeCurrentPower) badgeCurrentPower.textContent = "–";
     if (dailyTableBody) dailyTableBody.innerHTML = "";
   }
 
