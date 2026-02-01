@@ -16,20 +16,14 @@ from src.config import MQTT_PORT
 from src.config import SERVER_URL
 from src.config import TASMOTA_UI_URL
 from src.config import TOPIC
-from datetime import datetime
-from datetime import timedelta
-
 from src.database import get_avg_daily_energy_usage
 from src.database import get_daily_energy_usage
-from src.database import get_daily_energy_usage_from_db
 from src.database import get_moving_avg_daily_usage
 from src.database import get_readings
-from src.database import get_readings_downsampled
 from src.database import get_stats
 from src.database import latest_energy_reading
 from src.database import num_energy_readings_last_hour
 from src.database import num_total_energy_readings
-from src.helpers import local_timezone
 from src.helpers import parse_time_param
 from src.mqtt import get_mqtt_client
 
@@ -75,52 +69,23 @@ def mobile():
 
 @app.get("/api/readings")
 def api_readings():
-    """Return readings as {t, p, e} for timestamp, power, energy. Optional interval=hour|minute|raw."""
+    """Return readings as {t, p, e} for timestamp, power, energy."""
     start = parse_time_param(request.args.get("start"))
     end = parse_time_param(request.args.get("end"))
-    interval = (request.args.get("interval") or "raw").strip().lower()
-    if interval in ("hour", "minute"):
-        if start is None or end is None:
-            return jsonify({"error": "start and end are required when interval is hour or minute"}), 400
-        if end < start:
-            start, end = end, start
-        data = get_readings_downsampled(start=start, end=end, interval=interval)
-    else:
-        data = get_readings(start=start, end=end)
+    data = get_readings(start=start, end=end)
     return jsonify(data)
 
 
 @app.get("/api/energy_summary")
 def energy_summary():
-    """Return avg daily, per-day energy usage, and 30-day moving average. Requires start and end (ms)."""
-    start = parse_time_param(request.args.get("start"))
-    end = parse_time_param(request.args.get("end"))
-    if start is None or end is None:
-        return jsonify({"error": "start and end are required"}), 400
-    if end < start:
-        start, end = end, start
-
-    now = datetime.now(local_timezone())
-    week52_start = now - timedelta(weeks=52)
-
-    daily_range = get_daily_energy_usage_from_db(start, end)
-    daily_for_moving = get_daily_energy_usage_from_db(start - timedelta(days=30), end)
-    moving_full = get_moving_avg_daily_usage(daily_for_moving, window_days=30)
-    start_ms = int(start.timestamp() * 1000)
-    end_ms = int(end.timestamp() * 1000)
-    moving_avg_30d = [x for x in moving_full if start_ms <= x["t"] <= end_ms]
-
-    daily_52w = get_daily_energy_usage_from_db(week52_start, now)
-    avg_daily = None
-    if daily_52w:
-        total_kwh = sum(d["kwh"] for d in daily_52w)
-        avg_daily = total_kwh / len(daily_52w)
-
+    """Return avg daily, per-day energy usage, and 30-day moving average."""
+    data = get_readings(start=None, end=None)
+    daily_data = get_daily_energy_usage(data)
     return jsonify(
         {
-            "avg_daily": avg_daily,
-            "daily": daily_range,
-            "moving_avg_30d": moving_avg_30d,
+            "avg_daily": get_avg_daily_energy_usage(data),
+            "daily": daily_data,
+            "moving_avg_30d": get_moving_avg_daily_usage(daily_data, window_days=30),
         }
     )
 
