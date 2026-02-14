@@ -81,7 +81,12 @@ async function fetchJson(url, options = {}) {
   const opts = { ...DEFAULT_FETCH_OPTS, ...options };
   const res = await fetch(url, opts);
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${url}`);
+    let msg = `HTTP ${res.status}: ${url}`;
+    try {
+      const body = await res.json();
+      if (body && typeof body.error === "string") msg = body.error;
+    } catch (_) {}
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -167,6 +172,79 @@ function saveCostPerKwh(cost) {
 }
 
 // =============================================================================
+// Preset Periods (compare page and shared date logic)
+// =============================================================================
+/** Preset ids for getPresetPeriod. */
+const PRESET_IDS = ["today", "this_week", "this_month", "last_week", "last_month"];
+
+/**
+ * Get start and end timestamps (ms) and label for a preset period.
+ * Week starts Sunday to match main dashboard behaviour.
+ * @param {string} presetId - One of: today, this_week, this_month, last_week, last_month
+ * @returns {{ startMs: number, endMs: number, label: string }} - Bounds in ms and display label
+ */
+function getPresetPeriod(presetId) {
+  const now = new Date();
+  const start = new Date(now);
+  const end = new Date(now);
+  let label = presetId;
+
+  switch (presetId) {
+    case "today": {
+      start.setHours(0, 0, 0, 0);
+      end.setTime(now.getTime());
+      label = "Today";
+      break;
+    }
+    case "this_week": {
+      const day = now.getDay();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - day);
+      end.setTime(now.getTime());
+      label = "This week";
+      break;
+    }
+    case "this_month": {
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      end.setTime(now.getTime());
+      label = "This month";
+      break;
+    }
+    case "last_week": {
+      const day = now.getDay();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - day - 7);
+      end.setTime(start.getTime());
+      end.setDate(end.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+      label = "Last week";
+      break;
+    }
+    case "last_month": {
+      start.setMonth(start.getMonth() - 1);
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      end.setTime(start.getTime());
+      end.setMonth(end.getMonth() + 1);
+      end.setDate(0);
+      end.setHours(23, 59, 59, 999);
+      label = "Last month";
+      break;
+    }
+    default:
+      start.setHours(0, 0, 0, 0);
+      end.setTime(now.getTime());
+  }
+
+  return {
+    startMs: start.getTime(),
+    endMs: end.getTime(),
+    label,
+  };
+}
+
+// =============================================================================
 // Chart Series Configurations
 // =============================================================================
 /**
@@ -209,9 +287,10 @@ function getBaseChartSeries() {
  * @param {number} opts.xSize - X-axis size
  * @param {number} opts.ySize - Y-axis size
  * @param {string} opts.font - Font for axis labels
+ * @param {boolean} opts.hideYLabels - If true, omit y-axis labels and tick values (e.g. for mobile)
  */
 function getBaseChartAxes(opts = {}) {
-  const { xSize = 56, ySize = 56, font = "10px sans-serif" } = opts;
+  const { xSize = 56, ySize = 56, font = "10px sans-serif", hideYLabels = false } = opts;
   return [
     {
       stroke: ChartColors.axis,
@@ -226,6 +305,7 @@ function getBaseChartAxes(opts = {}) {
       grid: { show: false },
       size: ySize,
       font,
+      ...(hideYLabels ? { label: "", values: () => [] } : {}),
     },
     {
       side: 1,
@@ -235,6 +315,7 @@ function getBaseChartAxes(opts = {}) {
       scale: "y2",
       size: ySize,
       font,
+      ...(hideYLabels ? { label: "", values: () => [] } : {}),
     },
     {
       side: 1,
@@ -244,6 +325,7 @@ function getBaseChartAxes(opts = {}) {
       scale: "y3",
       size: ySize,
       font,
+      ...(hideYLabels ? { label: "", values: () => [] } : {}),
     },
   ];
 }
@@ -282,6 +364,8 @@ window.EnergyMonitor = {
   alignDailyDataToTimestamps,
   loadCostPerKwh,
   saveCostPerKwh,
+  getPresetPeriod,
+  PRESET_IDS,
   getBaseChartSeries,
   getBaseChartAxes,
   processReadingsData,

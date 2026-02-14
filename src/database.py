@@ -24,8 +24,13 @@ from src.telegram import report_missing_data_to_telegram
 
 logger = logging.getLogger(__name__)
 
+
+class NegativeEnergyError(ValueError):
+    """Raised when cumulative energy difference is negative (meter reset or bad data)."""
+
+
 # Time constants for data queries
-DEFAULT_LOOKBACK_WEEKS = 4
+DEFAULT_LOOKBACK_WEEKS = 52
 YEARLY_AVG_DAYS = 365
 
 # Configure engine with timeout and connection pool settings for better concurrency
@@ -101,15 +106,28 @@ def init_db():
     logger.info("Created all tables")
 
 
+def _nullable_float(val, *, treat_zero_as_none: bool = False):
+    """Return float or None. If treat_zero_as_none and value is 0, return None (for cumulative meters)."""
+    if val is None:
+        return None
+    f = float(val)
+    if treat_zero_as_none and f == 0:
+        return None
+    return f
+
+
 def save_energy_reading(tasmota_payload: str):
     """Persist a single MT681 energy reading payload."""
     mt_payload = tasmota_payload["MT681"]
     timestamp = datetime.now(local_timezone())
+    # Store 0 as NULL: cumulative E_in/E_out should not go to 0 after being high (meter reset/glitch).
+    energy_in = _nullable_float(mt_payload.get("E_in"), treat_zero_as_none=True)
+    energy_out = _nullable_float(mt_payload.get("E_out"), treat_zero_as_none=True)
     reading = EnergyReading(
         meter_id=str(mt_payload.get("Meter_id")),
         power_watts=float(mt_payload.get("Power")),
-        energy_in_kwh=float(mt_payload.get("E_in")),
-        energy_out_kwh=float(mt_payload.get("E_out")),
+        energy_in_kwh=energy_in,
+        energy_out_kwh=energy_out,
         power_phase_1_watts=float(mt_payload.get("Power_p1")),
         power_phase_2_watts=float(mt_payload.get("Power_p2")),
         power_phase_3_watts=float(mt_payload.get("Power_p3")),
@@ -142,7 +160,8 @@ def latest_energy_reading() -> EnergyReading | None:
 def get_monthly_avg_daily_usage() -> float:
     """
     Calculate average daily energy usage over the last ~365 days.
-    Uses only 2 datapoints: latest reading and reading from 365 days ago.
+    Uses the latest reading and the oldest reading within the past year.
+    If you have less than a year of data (e.g. 4 months), uses that span.
     Returns kWh/day.
     """
     tz = local_timezone()
@@ -151,20 +170,20 @@ def get_monthly_avg_daily_usage() -> float:
 
     with SessionLocal() as session:
         latest = session.query(EnergyReading).order_by(EnergyReading.timestamp.desc()).first()
-        year_ago_reading = (
+        oldest_in_window = (
             session.query(EnergyReading)
-            .filter(EnergyReading.timestamp <= year_ago)
-            .order_by(EnergyReading.timestamp.desc())
+            .filter(EnergyReading.timestamp >= year_ago)
+            .order_by(EnergyReading.timestamp.asc())
             .first()
         )
 
-        if not latest or not year_ago_reading:
+        if not latest or not oldest_in_window:
             raise ValueError("Not enough data")
-        if latest.energy_in_kwh is None or year_ago_reading.energy_in_kwh is None:
+        if latest.energy_in_kwh is None or oldest_in_window.energy_in_kwh is None:
             raise ValueError("Missing energy data")
 
-        energy_diff = latest.energy_in_kwh - year_ago_reading.energy_in_kwh
-        days_diff = (latest.timestamp - year_ago_reading.timestamp).total_seconds() / 86400
+        energy_diff = latest.energy_in_kwh - oldest_in_window.energy_in_kwh
+        days_diff = (latest.timestamp - oldest_in_window.timestamp).total_seconds() / 86400
         if days_diff <= 0:
             raise ValueError("Invalid time span")
         return energy_diff / days_diff
@@ -297,6 +316,12 @@ def get_daily_energy_usage(
         if first_energy is None or last_energy is None:
             continue
         daily_kwh = float(last_energy) - float(first_energy)
+        if daily_kwh < 0:
+            raise NegativeEnergyError(
+                f"Negative daily energy kwh={daily_kwh} for date={d_str}. "
+                f"first_energy={first_energy} last_energy={last_energy}. "
+                "Cumulative meter may have reset or data is out of order."
+            )
 
         # SQLite may return timestamp as str; parse to datetime for subtraction
         if isinstance(first_ts, str):
@@ -393,6 +418,13 @@ def get_stats(start: datetime, end: datetime) -> dict:
     if first_row is not None and last_row is not None:
         if first_row.energy_in_kwh is not None and last_row.energy_in_kwh is not None:
             energy_used = float(last_row.energy_in_kwh) - float(first_row.energy_in_kwh)
+            if energy_used < 0:
+                raise NegativeEnergyError(
+                    f"Negative energy_used_kwh={energy_used:.4f} in window start={start!s} end={end!s}. "
+                    f"First reading: ts={first_row.timestamp!s} energy_in_kwh={first_row.energy_in_kwh}. "
+                    f"Last reading: ts={last_row.timestamp!s} energy_in_kwh={last_row.energy_in_kwh}. "
+                    "Cumulative meter may have reset or data is out of order."
+                )
 
     return {
         "energy_used_kwh": energy_used,

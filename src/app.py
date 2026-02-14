@@ -67,6 +67,12 @@ def mobile():
     return render_template("mobile.html")
 
 
+@app.get("/compare")
+def compare():
+    """Serve the period comparison page."""
+    return render_template("compare.html")
+
+
 @app.get("/api/readings")
 def api_readings():
     """Return readings as {t, p, e} for timestamp, power, energy."""

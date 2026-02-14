@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Compare periods – Energy Monitor</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+    <link rel="shortcut icon" href="/static/favicon.ico">
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="branding">
+        <div class="logo-glow"></div>
+        <h1>Energy Monitor</h1>
+      </div>
+      <div class="status">
+        <a href="/" class="status-pill" title="Dashboard">Dashboard</a>
+        <a href="/compare" class="status-pill status-pill-active" title="Compare periods">Compare</a>
+        <a href="/mobile" class="status-pill" title="Mobile View">Mobile</a>
+      </div>
+    </header>
+
+    <main class="app-main compare-main-calendar">
+      <section class="card compare-controls-card">
+        <h2 class="compare-heading">Compare energy consumption</h2>
+
+        <div class="compare-search-box">
+          <div class="compare-search-row">
+            <div class="compare-calendar-block" id="block-period-a">
+              <button type="button" class="compare-period-field" id="trigger-period-a" aria-expanded="false" aria-controls="dropdown-calendar-a" aria-haspopup="dialog">
+                <span class="compare-period-field-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                </span>
+                <span class="compare-period-field-content">
+                  <span class="compare-period-field-label">Period A</span>
+                  <span class="compare-period-field-range" id="range-text-a">Select dates</span>
+                </span>
+              </button>
+              <div class="compare-calendar-dropdown collapsed" id="dropdown-calendar-a">
+                <div id="calendar-a" class="range-calendar" role="application" aria-label="Period A date range"></div>
+              </div>
+            </div>
+            <div class="compare-calendar-block" id="block-period-b">
+              <button type="button" class="compare-period-field" id="trigger-period-b" aria-expanded="false" aria-controls="dropdown-calendar-b" aria-haspopup="dialog">
+                <span class="compare-period-field-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                </span>
+                <span class="compare-period-field-content">
+                  <span class="compare-period-field-label">Period B</span>
+                  <span class="compare-period-field-range" id="range-text-b">Select dates</span>
+                </span>
+              </button>
+              <div class="compare-calendar-dropdown collapsed" id="dropdown-calendar-b">
+                <div id="calendar-b" class="range-calendar" role="application" aria-label="Period B date range"></div>
+              </div>
+            </div>
+            <div class="compare-search-actions">
+              <button type="button" class="btn btn-compare-primary" id="btn-compare">Compare</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="compare-error" class="compare-error hidden" role="alert"></div>
+        <div id="compare-warning" class="compare-warning hidden" role="status" aria-live="polite"></div>
+        <div id="compare-loading" class="compare-loading hidden">Loading…</div>
+      </section>
+
+      <div id="compare-results" class="compare-results hidden" aria-live="polite">
+        <div class="compare-charts-row">
+          <section class="card compare-chart-block">
+            <h3 class="compare-period-label">Period A</h3>
+            <div class="compare-chart-wrapper">
+              <div id="chart-a"></div>
+              <div id="hover-overlay-a" class="hover-overlay compare-hover-overlay hidden" aria-hidden="true">
+                <div class="hover-row-new"><span class="hover-label">Time:</span><span id="hover-a-time">–</span></div>
+                <div class="hover-row-new"><span class="hover-label text-energy">Meter (kWh):</span><span id="hover-a-meter">–</span></div>
+                <div class="hover-row-new"><span class="hover-label text-daily-energy">Daily (kWh):</span><span id="hover-a-daily">–</span></div>
+                <div class="hover-row-new"><span class="hover-label text-avg">30d Avg (kWh):</span><span id="hover-a-typical">–</span></div>
+                <div class="hover-row-new"><span class="hover-label text-power">Power (W):</span><span id="hover-a-power">–</span></div>
+                <div class="hover-row-new"><span class="hover-label text-rolling-avg">Avg P (W):</span><span id="hover-a-rolling">–</span></div>
+              </div>
+            </div>
+            <div class="compare-period-stats">
+              <div class="stat stat-days"><div class="label">Days</div><div class="value"><span id="stat-a-days">–</span></div></div>
+              <div class="stat"><div class="label">Energy (kWh)</div><div class="value text-energy"><span id="stat-a-energy">–</span></div></div>
+              <div class="stat"><div class="label">Daily avg (kWh/day)</div><div class="value text-energy"><span id="stat-a-daily-avg">–</span></div></div>
+              <div class="stat"><div class="label">Cost (€)</div><div class="value"><span id="stat-a-cost">–</span></div></div>
+              <div class="stat"><div class="label">Power avg (W)</div><div class="value text-power"><span id="stat-a-power-avg">–</span></div></div>
+              <div class="stat"><div class="label">Data points</div><div class="value"><span id="stat-a-count">–</span></div></div>
+            </div>
+          </section>
+          <section class="card compare-chart-block">
+            <h3 class="compare-period-label">Period B</h3>
+            <div class="compare-chart-wrapper">
+              <div id="chart-b"></div>
+              <div id="hover-overlay-b" class="hover-overlay compare-hover-overlay hidden" aria-hidden="true">
+                <div class="hover-row-new"><span class="hover-label">Time:</span><span id="hover-b-time">–</span></div>
+                <div class="hover-row-new"><span class="hover-label text-energy">Meter (kWh):</span><span id="hover-b-meter">–</span></div>
+                <div class="hover-row-new"><span class="hover-label text-daily-energy">Daily (kWh):</span><span id="hover-b-daily">–</span></div>
+                <div class="hover-row-new"><span class="hover-label text-avg">30d Avg (kWh):</span><span id="hover-b-typical">–</span></div>
+                <div class="hover-row-new"><span class="hover-label text-power">Power (W):</span><span id="hover-b-power">–</span></div>
+                <div class="hover-row-new"><span class="hover-label text-rolling-avg">Avg P (W):</span><span id="hover-b-rolling">–</span></div>
+              </div>
+            </div>
+            <div class="compare-period-stats">
+              <div class="stat stat-days"><div class="label">Days</div><div class="value"><span id="stat-b-days">–</span></div></div>
+              <div class="stat"><div class="label">Energy (kWh)</div><div class="value text-energy"><span id="stat-b-energy">–</span></div></div>
+              <div class="stat"><div class="label">Daily avg (kWh/day)</div><div class="value text-energy"><span id="stat-b-daily-avg">–</span></div></div>
+              <div class="stat"><div class="label">Cost (€)</div><div class="value"><span id="stat-b-cost">–</span></div></div>
+              <div class="stat"><div class="label">Power avg (W)</div><div class="value text-power"><span id="stat-b-power-avg">–</span></div></div>
+              <div class="stat"><div class="label">Data points</div><div class="value"><span id="stat-b-count">–</span></div></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="card compare-diff-card">
+          <h3 class="compare-diff-heading"><span id="diff-arrow" class="compare-diff-arrow" aria-hidden="true"></span> Difference (B − A)</h3>
+          <div class="compare-diff-stats" id="compare-diff-stats">
+            <div class="stat"><div class="label">Total energy</div><div class="value text-energy"><span id="diff-energy">–</span></div></div>
+            <div class="stat"><div class="label">Total cost</div><div class="value"><span id="diff-cost">–</span></div></div>
+            <div class="stat"><div class="label">Avg energy per day</div><div class="value text-energy"><span id="diff-daily-avg">–</span></div></div>
+            <div class="stat"><div class="label">Avg cost per day</div><div class="value"><span id="diff-cost-per-day">–</span></div></div>
+            <div class="stat"><div class="label">Avg power</div><div class="value text-power"><span id="diff-power-avg">–</span></div></div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script src="/static/shared.js"></script>
+    <script src="/static/compare.js"></script>
+  </body>
+</html>

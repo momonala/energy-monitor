@@ -78,7 +78,7 @@
     }
 
     const { width, height } = getChartSize();
-    const axes = getBaseChartAxes({ xSize: 40, ySize: 40, font: "10px sans-serif" });
+    const axes = getBaseChartAxes({ xSize: 40, ySize: 40, font: "10px sans-serif", hideYLabels: true });
     
     const opts = {
       width,
