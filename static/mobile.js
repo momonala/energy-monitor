@@ -5,7 +5,7 @@
  */
 (() => {
   // Import shared utilities
-  const { Fmt, formatDuration, setConnectionStatus, alignDailyDataToTimestamps, 
+  const { Fmt, formatDuration, fetchJson, setConnectionStatus, alignDailyDataToTimestamps,
           loadCostPerKwh, getBaseChartAxes, processReadingsData, ChartColors } = window.EnergyMonitor;
 
   // DOM Elements
@@ -207,11 +207,10 @@
     const now = Date.now();
     const startMs = now - days * 24 * 60 * 60 * 1000;
 
-    fetch("/api/latest_reading", { cache: "no-cache" })
-      .then((res) => (res.ok ? res.json() : null))
+    fetchJson("/api/latest_reading")
       .then((data) => {
         updateCurrentPowerRow(data);
-        setConnectionStatus(statusConn, data != null);
+        setConnectionStatus(statusConn, true);
       })
       .catch((e) => {
         console.error("Latest reading fetch error:", e);
@@ -219,11 +218,7 @@
         setConnectionStatus(statusConn, false);
       });
 
-    fetch(`/api/stats?start=${startMs}&end=${now}`, { cache: "no-cache" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Stats HTTP ${res.status}`);
-        return res.json();
-      })
+    fetchJson(`/api/stats?start=${startMs}&end=${now}`)
       .then((statsData) => {
         lastStats = statsData.stats;
         lastStartMs = startMs;
@@ -236,11 +231,7 @@
         showErrorInitial();
       });
 
-    fetch("/api/energy_summary", { cache: "no-cache" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Summary HTTP ${res.status}`);
-        return res.json();
-      })
+    fetchJson("/api/energy_summary")
       .then((summaryData) => {
         dailyEnergyData = summaryData.daily || [];
         movingAvgData = summaryData.moving_avg_30d || [];
@@ -271,16 +262,10 @@
     showLoading();
 
     try {
-      const [readingsRes, summaryRes] = await Promise.all([
-        fetch(`/api/readings?start=${startMs}&end=${now}`, { cache: "no-cache", signal }),
-        fetch("/api/energy_summary", { cache: "no-cache", signal }),
+      const [readings, summaryData] = await Promise.all([
+        fetchJson(`/api/readings?start=${startMs}&end=${now}`, { signal }),
+        fetchJson("/api/energy_summary", { signal }),
       ]);
-
-      if (!readingsRes.ok) throw new Error(`Readings HTTP ${readingsRes.status}`);
-      if (!summaryRes.ok) throw new Error(`Summary HTTP ${summaryRes.status}`);
-
-      const readings = await readingsRes.json();
-      const summaryData = await summaryRes.json();
 
       dailyEnergyData = summaryData.daily || [];
       movingAvgData = summaryData.moving_avg_30d || [];

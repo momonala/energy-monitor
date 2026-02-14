@@ -67,6 +67,26 @@ function formatDuration(ms) {
 }
 
 // =============================================================================
+// Fetch Utilities
+// =============================================================================
+const DEFAULT_FETCH_OPTS = { cache: "no-cache" };
+
+/**
+ * Fetch JSON from a URL. Throws on HTTP error or parse failure.
+ * @param {string} url - URL to fetch
+ * @param {RequestInit} options - Optional fetch options (merged with cache: "no-cache")
+ * @returns {Promise<unknown>} - Parsed JSON body
+ */
+async function fetchJson(url, options = {}) {
+  const opts = { ...DEFAULT_FETCH_OPTS, ...options };
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}: ${url}`);
+  }
+  return res.json();
+}
+
+// =============================================================================
 // Connection Status
 // =============================================================================
 /**
@@ -257,6 +277,7 @@ window.EnergyMonitor = {
   ChartColors,
   Fmt,
   formatDuration,
+  fetchJson,
   setConnectionStatus,
   alignDailyDataToTimestamps,
   loadCostPerKwh,

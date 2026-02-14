@@ -1,4 +1,6 @@
 (() => {
+  const { fetchJson } = window.EnergyMonitor;
+
   const chartEl = document.getElementById("chart");
   const chartLoading = document.getElementById("chart-loading");
   const statusConn = document.getElementById("status-connection");
@@ -492,10 +494,8 @@
    */
   async function fetchEnergySummary() {
     try {
-      const res = await fetch("/api/energy_summary", { cache: "no-cache" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      avgDailyEnergyUsage = data.avg_daily;
+      const data = await fetchJson("/api/energy_summary");
+      avgDailyEnergyUsage = data.avg_daily ?? null;
       dailyEnergyData = data.daily;
       movingAvgDailyData = data.moving_avg_30d || [];
       console.log(`Loaded energy summary: avg=${avgDailyEnergyUsage} kWh/day, ${dailyEnergyData.length} days, ${movingAvgDailyData.length} moving avg points`);
@@ -580,9 +580,7 @@
     if (end) qs.set("end", String(end));
     
     try {
-      const res = await fetch(`/api/readings?${qs.toString()}`, { cache: "no-cache" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const rows = await res.json();
+      const rows = await fetchJson(`/api/readings?${qs.toString()}`);
       
       // No new data
       if (!rows.length) {
@@ -1314,16 +1312,12 @@
   }
 
   async function fetchLatestReading() {
-    const res = await fetch("/api/latest_reading", { cache: "no-cache" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    return fetchJson("/api/latest_reading");
   }
 
   async function fetchStats(startMs, endMs) {
     const qs = new URLSearchParams({ start: String(startMs), end: String(endMs) });
-    const res = await fetch(`/api/stats?${qs.toString()}`, { cache: "no-cache" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = await res.json();
+    const body = await fetchJson(`/api/stats?${qs.toString()}`);
     return body.stats || {};
   }
 
