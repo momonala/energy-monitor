@@ -49,6 +49,8 @@ temp/
 *.session
 dump.rdb
 joblib_cache/
+*.db-shm
+*.db-wal
 
 # Coverage and testing
 .coverage
@@ -88,9 +90,8 @@ cache/
 event_cache.json
 app_calendar_events.json
 recent_locations.html
-data/energy.db
-*.db.bk
-data/*.db.bk
+data/*.db
+#data/*.db.bk
 
 # Local development
 .local/
