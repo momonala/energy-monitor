@@ -16,8 +16,8 @@ from src.config import MQTT_PORT
 from src.config import SERVER_URL
 from src.config import TASMOTA_UI_URL
 from src.config import TOPIC
-from src.database import get_avg_daily_energy_usage
 from src.database import get_daily_energy_usage
+from src.database import get_monthly_avg_daily_usage
 from src.database import get_moving_avg_daily_usage
 from src.database import get_readings
 from src.database import get_stats
@@ -79,11 +79,15 @@ def api_readings():
 @app.get("/api/energy_summary")
 def energy_summary():
     """Return avg daily, per-day energy usage, and 30-day moving average."""
-    data = get_readings(start=None, end=None)
-    daily_data = get_daily_energy_usage(data)
+    try:
+        avg_daily = get_monthly_avg_daily_usage()
+    except ValueError as e:
+        logger.warning(f"⚠️ [energy_summary] Error getting monthly avg daily usage: {e}")
+        avg_daily = None
+    daily_data = get_daily_energy_usage(start=None, end=None)
     return jsonify(
         {
-            "avg_daily": get_avg_daily_energy_usage(data),
+            "avg_daily": avg_daily,
             "daily": daily_data,
             "moving_avg_30d": get_moving_avg_daily_usage(daily_data, window_days=30),
         }

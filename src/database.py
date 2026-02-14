@@ -4,7 +4,6 @@ from datetime import datetime
 from datetime import timedelta
 from functools import lru_cache
 
-import pandas as pd
 import sqlalchemy
 from sqlalchemy import Column
 from sqlalchemy import DateTime
@@ -25,6 +24,9 @@ from src.telegram import report_missing_data_to_telegram
 
 logger = logging.getLogger(__name__)
 
+# Time constants for data queries
+DEFAULT_LOOKBACK_WEEKS = 4
+YEARLY_AVG_DAYS = 365
 
 # Configure engine with timeout and connection pool settings for better concurrency
 engine = create_engine(
@@ -137,6 +139,37 @@ def latest_energy_reading() -> EnergyReading | None:
         return last_reading
 
 
+def get_monthly_avg_daily_usage() -> float:
+    """
+    Calculate average daily energy usage over the last ~365 days.
+    Uses only 2 datapoints: latest reading and reading from 365 days ago.
+    Returns kWh/day.
+    """
+    tz = local_timezone()
+    now = datetime.now(tz)
+    year_ago = now - timedelta(days=YEARLY_AVG_DAYS)
+
+    with SessionLocal() as session:
+        latest = session.query(EnergyReading).order_by(EnergyReading.timestamp.desc()).first()
+        year_ago_reading = (
+            session.query(EnergyReading)
+            .filter(EnergyReading.timestamp <= year_ago)
+            .order_by(EnergyReading.timestamp.desc())
+            .first()
+        )
+
+        if not latest or not year_ago_reading:
+            raise ValueError("Not enough data")
+        if latest.energy_in_kwh is None or year_ago_reading.energy_in_kwh is None:
+            raise ValueError("Missing energy data")
+
+        energy_diff = latest.energy_in_kwh - year_ago_reading.energy_in_kwh
+        days_diff = (latest.timestamp - year_ago_reading.timestamp).total_seconds() / 86400
+        if days_diff <= 0:
+            raise ValueError("Invalid time span")
+        return energy_diff / days_diff
+
+
 def num_energy_readings_last_hour() -> int:
     """Get the number of energy readings in the last hour."""
     with SessionLocal() as session:
@@ -212,74 +245,79 @@ def get_readings(
     return result
 
 
-def get_avg_daily_energy_usage(readings_data: list[dict]) -> float:
-    """Return the average daily energy usage over the last year from cumulative readings."""
-    df = pd.DataFrame(readings_data)
-    df["t"] = pd.to_datetime(df["t"], unit="ms")
-    df.columns = ["time", "power", "energy"]
-    df = df.sort_values("time")
+def get_daily_energy_usage(
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> list[dict]:
+    """
+    Calculate daily energy consumption from the database using SQL.
+    Returns list of {t: timestamp_ms, kwh: float, is_partial: bool} per day.
+    Partial days are those with less than 23 hours of coverage.
+    """
+    tz = local_timezone()
+    now = datetime.now(tz)
+    start_bound = start.astimezone(tz) if start is not None else now - timedelta(weeks=DEFAULT_LOOKBACK_WEEKS)
+    end_bound = end.astimezone(tz) if end is not None else now
 
-    last_timestamp = df["time"].max()
-    one_year_ago = last_timestamp - pd.Timedelta(days=365)
-
-    last_year_data = df[df["time"] >= one_year_ago]
-
-    if len(last_year_data) < 2:
-        raise ValueError("Not enough data in the last year")
-
-    energy_start = last_year_data["energy"].iloc[0]
-    energy_end = last_year_data["energy"].iloc[-1]
-
-    days_span = (last_year_data["time"].iloc[-1] - last_year_data["time"].iloc[0]).total_seconds() / 86400
-    if days_span <= 0:
-        raise ValueError("Invalid time span")
-
-    return (energy_end - energy_start) / days_span
-
-
-def get_daily_energy_usage(readings_data: list[dict]) -> list[dict]:
-    """Calculate daily energy consumption from cumulative readings, handling partial days."""
-    if not readings_data:
-        return []
-
-    df = pd.DataFrame(readings_data)
-    df["time"] = pd.to_datetime(df["t"], unit="ms")
-    df["energy"] = df["e"]
-    df = df.sort_values("time")
-    df = df[df["energy"].notna() & (df["energy"] > 0)]
-
-    if len(df) < 2:
-        return []
-
-    df["date"] = df["time"].dt.date
-
-    # Group by date and get first/last energy reading per day
-    daily = df.groupby("date").agg(
-        energy_start=("energy", "first"),
-        energy_end=("energy", "last"),
-        first_time=("time", "first"),
-        last_time=("time", "last"),
+    sql = text(
+        """
+    WITH filtered AS (
+        SELECT timestamp, energy_in_kwh, date(timestamp) AS d
+        FROM energy_readings
+        WHERE timestamp >= :start_bound AND timestamp <= :end_bound
+          AND energy_in_kwh IS NOT NULL AND energy_in_kwh > 0
+    ),
+    ranked AS (
+        SELECT *,
+            row_number() OVER (PARTITION BY d ORDER BY timestamp ASC) AS rn_asc,
+            row_number() OVER (PARTITION BY d ORDER BY timestamp DESC) AS rn_desc
+        FROM filtered
+    )
+    SELECT d,
+        min(CASE WHEN rn_asc = 1 THEN timestamp END) AS first_ts,
+        max(CASE WHEN rn_desc = 1 THEN timestamp END) AS last_ts,
+        min(CASE WHEN rn_asc = 1 THEN energy_in_kwh END) AS first_energy,
+        max(CASE WHEN rn_desc = 1 THEN energy_in_kwh END) AS last_energy
+    FROM ranked
+    GROUP BY d
+    HAVING first_ts IS NOT NULL AND last_ts IS NOT NULL AND first_energy IS NOT NULL AND last_energy IS NOT NULL
+    ORDER BY d
+    """
     )
 
-    # Calculate daily consumption as difference between end and start of each day
-    daily["daily_kwh"] = daily["energy_end"] - daily["energy_start"]
+    with SessionLocal() as session:
+        rows = session.execute(
+            sql,
+            {"start_bound": start_bound, "end_bound": end_bound},
+        ).fetchall()
 
-    # Mark partial days (less than 23 hours of coverage)
-    daily["hours_covered"] = (daily["last_time"] - daily["first_time"]).dt.total_seconds() / 3600
-    daily["is_partial"] = daily["hours_covered"] < 23
-
-    # Build result: use midpoint of each day as timestamp
     result = []
-    for date, row in daily.iterrows():
-        midpoint = datetime.combine(date, datetime.min.time().replace(hour=12))
-        midpoint = midpoint.replace(tzinfo=local_timezone())
-        result.append(
-            {
-                "t": int(midpoint.timestamp() * 1000),
-                "kwh": float(row["daily_kwh"]),
-                "is_partial": bool(row["is_partial"]),
-            }
-        )
+    for row in rows:
+        d_str, first_ts, last_ts, first_energy, last_energy = row
+        if first_energy is None or last_energy is None:
+            continue
+        daily_kwh = float(last_energy) - float(first_energy)
+
+        # SQLite may return timestamp as str; parse to datetime for subtraction
+        if isinstance(first_ts, str):
+            first_ts = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
+        if isinstance(last_ts, str):
+            last_ts = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+        if first_ts.tzinfo is None:
+            first_ts = first_ts.replace(tzinfo=tz)
+        if last_ts.tzinfo is None:
+            last_ts = last_ts.replace(tzinfo=tz)
+
+        hours_covered = (last_ts - first_ts).total_seconds() / 3600
+        is_partial = hours_covered < 23
+
+        # Midpoint of day in local timezone (noon)
+        date_part = first_ts.date()
+        midpoint = datetime.combine(date_part, datetime.min.time().replace(hour=12))
+        midpoint = midpoint.replace(tzinfo=tz)
+        t_ms = int(midpoint.timestamp() * 1000)
+
+        result.append({"t": t_ms, "kwh": float(daily_kwh), "is_partial": is_partial})
 
     return result
 
