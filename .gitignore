@@ -49,8 +49,6 @@ temp/
 *.session
 dump.rdb
 joblib_cache/
-*.db-shm
-*.db-wal
 
 # Coverage and testing
 .coverage
@@ -70,7 +68,7 @@ ehthumbs.db
 Thumbs.db
 
 # Secrets and credentials
-values.py
+**/*values.py
 google_application_credentials.json
 *.pem
 *.key
@@ -80,7 +78,6 @@ secrets/
 
 # Media files
 *.mp4
-*.mp3
 *.avi
 *.mov
 
@@ -90,9 +87,9 @@ cache/
 event_cache.json
 app_calendar_events.json
 recent_locations.html
-data/*.db
-#data/*.db.bk
+static/*.html
 
 # Local development
 .local/
 .ipython/
+.cursor/
