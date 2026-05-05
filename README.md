@@ -5,14 +5,6 @@
 
 Real-time energy monitoring dashboard for MT681 smart meters via Tasmota MQTT.
 
-## Screenshot
-
-Dashboard
-
-## Tech Stack
-
-Python 3.12, Flask 3.x, SQLAlchemy 2.x, paho-mqtt 2.x, SQLite, uPlot (frontend charting)
-
 ## Architecture
 
 ```mermaid
@@ -80,9 +72,9 @@ Open `http://localhost:5008`
 
 ### Layout
 
-- **Chart** (70% width): Power (W), cumulative energy (kWh), and daily usage trend (30-day moving average or total average)
-- **Selection Stats** (15% width): Statistics for the selected time range
-- **Period Summary** (15% width): Today, this week, this month, and total consumption
+- **Chart**: Power (W), cumulative energy (kWh), and daily usage trend (30-day moving average or total average)
+- **Selection Stats**: Statistics for the selected time range
+- **Period Summary**: Today, this week, this month, and total consumption
 
 ### Live Updates
 
@@ -91,65 +83,10 @@ Open `http://localhost:5008`
 - Visual flash indicator when new data arrives
 - Auto-expands view if watching near real-time (within 2 minutes of latest data)
 
-### Keyboard Shortcuts
-
-
-| Key   | Action                 |
-| ----- | ---------------------- |
-| `R`   | Refresh data           |
-| `Esc` | Reset selection / zoom |
-| `1`   | View last hour         |
-| `2`   | View last day          |
-| `3`   | View last week         |
-| `4`   | View last month        |
-| `5`   | View last year         |
-
-
-### Touch Support
-
-- Optimized for iPad landscape mode
-- Drag to select time range
-- Double-tap to reset zoom
-
-### Controls
-
-**Trace Toggles (Row 1):**
-
-- Show/hide individual series: Live Power | Daily Usage | 30d Avg | Avg Power | Meter Reading
-
-**Actions & Time Filters (Row 2):**
-
-- **Refresh**: Reload all data from server
-- **Reset**: Clear selection and show full data range
-- **📊 Auto / Fixed**: Toggle power axis between auto-scaling and fixed 0-2000W range
-- **📈 30d / Total**: Toggle daily usage baseline between 30-day moving average (adaptive) and total average (flat line)
-- **Hour / Day / Week / Month / Year**: Quick zoom to time range
-
-### Loading States
-
-- Skeleton placeholders on initial load
-- Chart loading overlay
-- Button loading animation during refresh
 
 ## Mobile Dashboard
 
 A simplified, mobile-optimized interface is available at `/mobile`. Mobile users (iPhone, Android) are automatically redirected; iPad users see the full desktop dashboard.
-
-### Mobile Features
-
-- **Lookback Period**: Manual input field to select number of days (default: 7, max: 365)
-- **Compact Chart**: Non-interactive chart showing power, energy, daily usage, and 30-day average
-- **Series Toggles**: Tap to show/hide chart series (Power, Meter, Daily, 30d Avg)
-- **Stats Cards**: Energy & cost (real vs typical), power statistics, data info
-- **Daily Breakdown Table**: Per-day usage with typical comparison and difference highlighting
-- **Desktop Link**: Easy navigation back to full dashboard
-
-### Mobile Detection
-
-Automatic redirect based on User-Agent:
-- **Redirected to mobile**: iPhone, Android, iPod, BlackBerry, Windows Phone
-- **Stay on desktop**: iPad, desktop browsers
-- **Manual access**: `/mobile` is always accessible directly
 
 ## Project Structure
 
@@ -358,24 +295,3 @@ uv run python -m src.scheduler
   sudo systemctl restart projects_energy-monitor_mqtt.service
   sudo systemctl restart projects_energy-monitor_data-backup-scheduler.service
   ```
-
-
-## Development Commands
-
-```bash
-# Format code
-black . && isort .
-
-# Sync to Raspberry Pi
-rsync -av --exclude 'data/' . mnalavadi@192.168.2.107:/home/mnalavadi/energy-monitor
-
-# Pull DB from Raspberry Pi
-rsync -av mnalavadi@192.168.2.107:/home/mnalavadi/energy-monitor/data/ ./data/
-```
-
-## Known Limitations
-
-- MQTT loop skipped on macOS (`sys.platform == "darwin"`) - designed for headless Linux deployment
-- Git auto-commit uses `--amend --force` - single commit history for DB file
-- No authentication on API endpoints
-

@@ -3,6 +3,7 @@
 Query the DB for readings where energy_in_kwh is 0.
 Prints: total number of points, then for each hour the count of such points.
 """
+
 from sqlalchemy import text
 
 from src.database import engine
@@ -15,18 +16,14 @@ def main() -> None:
         n = count_result.scalar_one()
 
         # Per-hour: hour (date + hour) and count of points with energy = 0
-        hours_result = conn.execute(
-            text(
-                """
+        hours_result = conn.execute(text("""
                 SELECT strftime('%Y-%m-%d %H:00:00', timestamp) AS hour_utc,
                        COUNT(*) AS n
                 FROM energy_readings
                 WHERE energy_in_kwh = 0
                 GROUP BY hour_utc
                 ORDER BY hour_utc
-            """
-            )
-        )
+            """))
         rows = hours_result.fetchall()
 
     print(f"Number of points with energy_in_kwh = 0: {n}")

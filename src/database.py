@@ -278,8 +278,7 @@ def get_daily_energy_usage(
     start_bound = start.astimezone(tz) if start is not None else now - timedelta(weeks=DEFAULT_LOOKBACK_WEEKS)
     end_bound = end.astimezone(tz) if end is not None else now
 
-    sql = text(
-        """
+    sql = text("""
     WITH filtered AS (
         SELECT timestamp, energy_in_kwh, date(timestamp) AS d
         FROM energy_readings
@@ -301,8 +300,7 @@ def get_daily_energy_usage(
     GROUP BY d
     HAVING first_ts IS NOT NULL AND last_ts IS NOT NULL AND first_energy IS NOT NULL AND last_energy IS NOT NULL
     ORDER BY d
-    """
-    )
+    """)
 
     with SessionLocal() as session:
         rows = session.execute(
