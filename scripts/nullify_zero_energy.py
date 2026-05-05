@@ -4,6 +4,7 @@ Set energy_in_kwh and energy_out_kwh to NULL where they are 0.
 Unifies old data with the rule: we do not store 0 for cumulative energy (treat as invalid/reset).
 Run from project root: uv run python scripts/nullify_zero_energy.py
 """
+
 from sqlalchemy import text
 
 from src.database import engine

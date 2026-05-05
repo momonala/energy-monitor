@@ -42,11 +42,11 @@ def parse_start_from_commit(message: str) -> str | None:
 
 def commit_db_if_changed():
     run_command(["cp", database_path, file_to_commit])
-    logger.info(f"Copied {database_path} to {file_to_commit}")
+    logger.debug(f"Copied {database_path} to {file_to_commit}")
 
     diff = run_command(["git", "diff", file_to_commit])
     if not diff:
-        logger.info("No changes. Skipping commit.")
+        logger.debug("No changes. Skipping commit.")
         return
 
     run_command(["git", "add", file_to_commit])
