@@ -1,21 +1,22 @@
 """MQTT client service for receiving and processing energy meter data."""
 
 import json
-import logging
 import queue
 import sys
 import threading
 
 import paho.mqtt.client as mqtt
 
+import src.observability  # noqa: F401
 from src.config import MQTT_PORT
 from src.config import SERVER_URL
 from src.config import TOPIC
 from src.database import init_db
 from src.database import save_energy_reading
+from src.observability import get_logger
+from src.observability import metrics
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Queue for database writes
 db_queue = queue.Queue()
@@ -33,6 +34,7 @@ def db_worker():
         try:
             save_energy_reading(tasmota_payload=payload)
         except Exception:
+            metrics.increment("mqtt.db_save.errors")
             logger.exception("Failed to save reading")
         finally:
             db_queue.task_done()
@@ -58,20 +60,25 @@ def on_message(client, userdata, msg):
         payload = msg.payload.decode()
         # handle basic status messages
         if payload in ["Online", "Offline"]:
+            metrics.increment("mqtt.messages.status")
             logger.debug(f"[msg] {msg.topic}: {payload}")
             return
         data = json.loads(payload)
         logger.debug(f"[msg] {msg.topic}: {data}")
     except json.decoder.JSONDecodeError:
+        metrics.increment("mqtt.messages.decode_errors")
         logger.exception(f"[msg] {msg.topic}: {msg.payload}")
         return
 
     if "MT681" in data:
+        metrics.increment("mqtt.messages.mqtt_reading")
+        metrics.gauge("mqtt.db_queue.depth", db_queue.qsize())
         db_queue.put(data)  # enqueue DB write
 
 
 def on_disconnect(client, userdata, reason_code, properties):
     """Callback for when the MQTT client disconnects."""
+    metrics.increment("mqtt.disconnect")
     logger.info(f"[disconnect] code={reason_code}")
 
 

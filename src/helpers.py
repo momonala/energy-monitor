@@ -1,12 +1,12 @@
-import logging
 import time
 from datetime import datetime
 from datetime import timezone
 from functools import lru_cache
 from functools import wraps
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from src.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 def timed(func):

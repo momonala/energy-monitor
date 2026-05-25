@@ -1,13 +1,12 @@
-import logging
 import re
 import subprocess
 from datetime import datetime
 from urllib.parse import urlparse
 
 from src.config import DATABASE_URL
+from src.observability import get_logger
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 BRANCH = "main"
 COMMIT_PREFIX = "[DB-AUTO-BACKUP]"

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from pathlib import Path
 
 from flask import Flask
@@ -11,6 +12,7 @@ from flask import render_template
 from flask import request
 from flask_compress import Compress
 
+import src.observability  # noqa: F401 — configure Spyglass logging before other src imports
 from src.config import FLASK_PORT
 from src.config import MQTT_PORT
 from src.config import SERVER_URL
@@ -26,9 +28,10 @@ from src.database import num_energy_readings_last_hour
 from src.database import num_total_energy_readings
 from src.helpers import parse_time_param
 from src.mqtt import get_mqtt_client
+from src.observability import get_logger
+from src.observability import metrics
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Point to static and templates folders at project root (one level up from src/)
 project_root = Path(__file__).parent.parent
@@ -39,6 +42,26 @@ app = Flask(
 )
 Compress(app)  # Enable gzip compression for responses > 500 bytes
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
+
+@app.before_request
+def _spyglass_request_start():
+    """Record request start time for API latency metrics."""
+    from flask import request
+
+    request.environ["_spyglass_start"] = time.perf_counter()
+
+
+@app.after_request
+def _spyglass_request_end(response):
+    """Emit per-endpoint request and error counters."""
+    from flask import request
+
+    endpoint = request.endpoint or "unknown"
+    elapsed_ms = (time.perf_counter() - request.environ.get("_spyglass_start", time.perf_counter())) * 1000
+    metrics.timing(f"api.{endpoint}.latency_ms", elapsed_ms)
+    return response
+
 
 # Mobile user-agent patterns (exclude iPad - it should see desktop)
 MOBILE_PATTERNS = ["Mobile", "Android", "iPhone", "iPod", "BlackBerry", "Windows Phone"]

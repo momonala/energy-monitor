@@ -615,6 +615,7 @@ dependencies = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "schedule" },
+    { name = "spyglass" },
     { name = "sqlalchemy" },
     { name = "typer" },
 ]
@@ -632,6 +633,7 @@ requires-dist = [
     { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "ruff", specifier = ">=0.14.10" },
     { name = "schedule", specifier = ">=1.0.0,<2.0.0" },
+    { name = "spyglass", git = "https://github.com/momonala/spyglass.git?rev=main" },
     { name = "sqlalchemy", specifier = ">=2.0.0,<3.0.0" },
     { name = "typer", specifier = ">=0.9.0" },
 ]
@@ -1591,6 +1593,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-dotenv"
+version = "1.2.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/ed/0301aeeac3e5353ef3d94b6ec08bbcabd04a72018415dcb29e588514bba8/python_dotenv-1.2.2.tar.gz", hash = "sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3", size = 50135, upload-time = "2026-03-01T16:00:26.196Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0b/d7/1959b9648791274998a9c3526f6d0ec8fd2233e4d4acce81bbae76b44b2a/python_dotenv-1.2.2-py3-none-any.whl", hash = "sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a", size = 22101, upload-time = "2026-03-01T16:00:25.09Z" },
+]
+
+[[package]]
 name = "python-json-logger"
 version = "4.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1968,6 +1979,24 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7b/ae/2d9c981590ed9999a0d91755b47fc74f74de286b0f5cee14c9269041e6c4/soupsieve-2.8.3.tar.gz", hash = "sha256:3267f1eeea4251fb42728b6dfb746edc9acaffc4a45b27e19450b676586e8349", size = 118627, upload-time = "2026-01-20T04:27:02.457Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/46/2c/1462b1d0a634697ae9e55b3cecdcb64788e8b7d63f54d923fcd0bb140aed/soupsieve-2.8.3-py3-none-any.whl", hash = "sha256:ed64f2ba4eebeab06cc4962affce381647455978ffc1e36bb79a545b91f45a95", size = 37016, upload-time = "2026-01-20T04:27:01.012Z" },
+]
+
+[[package]]
+name = "spyglass"
+version = "0.1.0"
+source = { git = "https://github.com/momonala/spyglass.git?rev=main#d5121fbafb386cd1a678df6025fbbcbc46c7f852" }
+dependencies = [
+    { name = "black" },
+    { name = "flask" },
+    { name = "isort" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "ruff" },
+    { name = "schedule" },
+    { name = "sqlalchemy" },
+    { name = "typer" },
 ]
 
 [[package]]

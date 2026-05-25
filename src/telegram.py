@@ -1,10 +1,12 @@
-import logging
 import sys
 
 import requests
 
+from src.observability import get_logger
 from src.values import TELEGRAM_API_TOKEN
 from src.values import TELEGRAM_CHAT_ID
+
+logger = get_logger(__name__)
 
 
 def report_missing_data_to_telegram(message: str) -> None:
@@ -28,4 +30,4 @@ def report_missing_data_to_telegram(message: str) -> None:
         response = requests.post(url, data=payload)
         response.raise_for_status()
     except requests.RequestException as exc:
-        logging.error("Failed to send message to Telegram: %s", exc)
+        logger.error("Failed to send message to Telegram: %s", exc)

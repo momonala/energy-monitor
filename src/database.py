@@ -1,5 +1,4 @@
 import json
-import logging
 from datetime import datetime
 from datetime import timedelta
 from functools import lru_cache
@@ -20,9 +19,11 @@ from sqlalchemy.orm import sessionmaker
 from src.config import DATABASE_URL
 from src.helpers import local_timezone
 from src.helpers import timed
+from src.observability import get_logger
+from src.observability import metrics
 from src.telegram import report_missing_data_to_telegram
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class NegativeEnergyError(ValueError):
@@ -136,13 +137,16 @@ def save_energy_reading(tasmota_payload: str):
     )
 
     try:
-        with SessionLocal() as session:
-            session.add(reading)
-            session.commit()
-            session.refresh(reading)
+        with metrics.timed("db.save_reading"):
+            with SessionLocal() as session:
+                session.add(reading)
+                session.commit()
+                session.refresh(reading)
+        metrics.increment("db.readings.saved")
         logger.debug(f"🟢 Saved {reading=}")
         return
     except sqlalchemy.exc.IntegrityError:
+        metrics.increment("db.readings.duplicate")
         logger.info(f"⚠️ Reading already exists for {timestamp=}")
         return
 
@@ -208,9 +212,12 @@ def num_total_energy_readings() -> int:
 def log_db_health_check():
     """Log the number of records in the DB as a health check."""
     num_readings_last_hour = num_energy_readings_last_hour()
+    metrics.gauge("db.readings.last_hour", num_readings_last_hour)
     if num_readings_last_hour < 300:
+        metrics.increment("db.health.low_readings")
         report_missing_data_to_telegram(f"Only {num_readings_last_hour} readings in the last hour")
     num_total_readings = num_total_energy_readings()
+    metrics.gauge("db.readings.total", num_total_readings)
     logger.info(f"[log_db_health_check] {num_readings_last_hour=} {num_total_readings=}")
 
 
@@ -230,21 +237,22 @@ def get_readings(
     end_bound = end.astimezone(tz) if end is not None else datetime.now(tz)
 
     bucket = func.strftime("%s", EnergyReading.timestamp) / 120
-    with SessionLocal() as session:
-        rows = (
-            session.query(
-                func.max(EnergyReading.timestamp).label("timestamp"),
-                func.max(EnergyReading.power_watts).label("power_watts"),
-                func.max(EnergyReading.energy_in_kwh).label("energy_in_kwh"),
+    with metrics.timed("db.get_readings"):
+        with SessionLocal() as session:
+            rows = (
+                session.query(
+                    func.max(EnergyReading.timestamp).label("timestamp"),
+                    func.max(EnergyReading.power_watts).label("power_watts"),
+                    func.max(EnergyReading.energy_in_kwh).label("energy_in_kwh"),
+                )
+                .filter(
+                    EnergyReading.timestamp >= start_bound,
+                    EnergyReading.timestamp <= end_bound,
+                )
+                .group_by(bucket)
+                .order_by(func.max(EnergyReading.timestamp))
+                .all()
             )
-            .filter(
-                EnergyReading.timestamp >= start_bound,
-                EnergyReading.timestamp <= end_bound,
-            )
-            .group_by(bucket)
-            .order_by(func.max(EnergyReading.timestamp))
-            .all()
-        )
 
     if rows:
         logger.debug(
@@ -384,31 +392,30 @@ def get_stats(start: datetime, end: datetime) -> dict:
       - min_power_watts, max_power_watts, avg_power_watts
       - count
     """
-    with SessionLocal() as session:
-        # First and last within window
-        first_row = (
-            session.query(EnergyReading)
-            .filter(EnergyReading.timestamp >= start, EnergyReading.timestamp <= end)
-            .order_by(EnergyReading.timestamp.asc())
-            .first()
-        )
-        last_row = (
-            session.query(EnergyReading)
-            .filter(EnergyReading.timestamp >= start, EnergyReading.timestamp <= end)
-            .order_by(EnergyReading.timestamp.desc())
-            .first()
-        )
-
-        agg = (
-            session.query(
-                func.min(EnergyReading.power_watts),
-                func.max(EnergyReading.power_watts),
-                func.avg(EnergyReading.power_watts),
-                func.count(EnergyReading.power_watts),
+    with metrics.timed("db.get_stats"):
+        with SessionLocal() as session:
+            first_row = (
+                session.query(EnergyReading)
+                .filter(EnergyReading.timestamp >= start, EnergyReading.timestamp <= end)
+                .order_by(EnergyReading.timestamp.asc())
+                .first()
             )
-            .filter(EnergyReading.timestamp >= start, EnergyReading.timestamp <= end)
-            .one()
-        )
+            last_row = (
+                session.query(EnergyReading)
+                .filter(EnergyReading.timestamp >= start, EnergyReading.timestamp <= end)
+                .order_by(EnergyReading.timestamp.desc())
+                .first()
+            )
+            agg = (
+                session.query(
+                    func.min(EnergyReading.power_watts),
+                    func.max(EnergyReading.power_watts),
+                    func.avg(EnergyReading.power_watts),
+                    func.count(EnergyReading.power_watts),
+                )
+                .filter(EnergyReading.timestamp >= start, EnergyReading.timestamp <= end)
+                .one()
+            )
 
     min_power, max_power, avg_power, count = agg
     logger.debug(f"⚠️ [get_stats] {min_power=} {max_power=} {avg_power=} {count=}")

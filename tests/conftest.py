@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import src.observability  # noqa: F401 — configure logging before app import
 from src.app import app as flask_app
 from src.database import Base
 from src.database import EnergyReading

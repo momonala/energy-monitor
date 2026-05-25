@@ -68,6 +68,27 @@ uv run app
 
 Open `http://localhost:5008`
 
+## Observability (Spyglass)
+
+Logs and metrics ship to a local [Spyglass](https://github.com/momonala/spyglass) server (`spyglass_host` in `[tool.config]`, default `localhost:5013`).
+
+```bash
+# Terminal 1 — one Spyglass server for all projects on this machine
+cd ~/code/spyglass && uv tool install --editable . && spyglass serve
+
+# Terminal 2 — energy-monitor (project name: energy-monitor)
+uv run app
+uv run python -m src.mqtt
+uv run python -m src.scheduler
+```
+
+Query data:
+
+```bash
+curl "http://localhost:5013/metrics?project=energy-monitor&limit=20"
+curl "http://localhost:5013/logs?project=energy-monitor&level=INFO"
+```
+
 ## Dashboard Features
 
 ### Layout

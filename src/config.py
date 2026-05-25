@@ -10,6 +10,8 @@ with _config_file.open("rb") as f:
 _project_config = _config["project"]
 _tool_config = _config["tool"]["config"]
 
+SPYGLASS_HOST = _tool_config["spyglass_host"]
+SPYGLASS_PROJECT = _project_config["name"]
 SERVER_URL = _tool_config["server_url"]
 FLASK_PORT = _tool_config["flask_port"]
 MQTT_PORT = _tool_config["mqtt_port"]
@@ -31,6 +33,7 @@ def config_cli(
     server_url: bool = typer.Option(False, "--server-url", help=SERVER_URL),
     flask_port: bool = typer.Option(False, "--flask-port", help=str(FLASK_PORT)),
     mqtt_port: bool = typer.Option(False, "--mqtt-port", help=str(MQTT_PORT)),
+    spyglass_host: bool = typer.Option(False, "--spyglass-host", help=SPYGLASS_HOST),
     # MQTT settings
     mqtt_topic: bool = typer.Option(False, "--mqtt-topic", help=TOPIC),
     tasmota_ui_url: bool = typer.Option(False, "--tasmota-ui-url", help=TASMOTA_UI_URL),
@@ -56,6 +59,7 @@ def config_cli(
         typer.echo(f"database_url={DATABASE_URL}")
         typer.echo(f"tunnel_name={TUNNEL_NAME}")
         typer.echo(f"domain_suffix={DOMAIN_SUFFIX}")
+        typer.echo(f"spyglass_host={SPYGLASS_HOST}")
         return
 
     # Map parameters to their actual values
@@ -71,6 +75,7 @@ def config_cli(
         database_url: DATABASE_URL,
         tunnel_name: TUNNEL_NAME,
         domain_suffix: DOMAIN_SUFFIX,
+        spyglass_host: SPYGLASS_HOST,
     }
 
     for is_set, value in param_map.items():
