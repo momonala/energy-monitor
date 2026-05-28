@@ -76,10 +76,10 @@ def on_message(client, userdata, msg):
         db_queue.put(data)  # enqueue DB write
 
 
-def on_disconnect(client, userdata, reason_code, properties):
+def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
     """Callback for when the MQTT client disconnects."""
     metrics.increment("mqtt.disconnect")
-    logger.info(f"[disconnect] code={reason_code}")
+    logger.info(f"[disconnect] flags={disconnect_flags} code={reason_code}")
 
 
 if __name__ == "__main__":
