@@ -63,22 +63,25 @@
           </div>
           <div class="toolbar">
             <div class="toolbar-row">
-              <button id="btn-toggle-power" class="btn btn-trace btn-trace-power" data-series="1">Live Power</button>
-              <button id="btn-toggle-daily" class="btn btn-trace btn-trace-daily" data-series="2">Daily Usage</button>
-              <button id="btn-toggle-typical" class="btn btn-trace btn-trace-typical" data-series="3">30d Avg</button>
-              <button id="btn-toggle-avg-power" class="btn btn-trace btn-trace-avg-power" data-series="4">Avg Power</button>
-              <button id="btn-toggle-meter" class="btn btn-trace btn-trace-meter" data-series="5">Meter Reading</button>
+              <button id="btn-toggle-power" class="btn btn-trace btn-trace-power" data-series="1" aria-pressed="true">Live Power</button>
+              <button id="btn-toggle-daily" class="btn btn-trace btn-trace-daily" data-series="2" aria-pressed="true">Daily Usage</button>
+              <button id="btn-toggle-avg-power" class="btn btn-trace btn-trace-avg-power" data-series="3" aria-pressed="true">Avg Power</button>
+              <button id="btn-toggle-meter" class="btn btn-trace btn-trace-meter" data-series="4" aria-pressed="true">Meter Reading</button>
+              <button id="btn-toggle-typical" class="btn btn-trace btn-trace-typical" data-series="5" aria-pressed="true">30d Avg</button>
             </div>
             <div class="toolbar-row">
               <button id="btn-refresh" class="btn">Refresh</button>
               <button id="btn-reset" class="btn">Reset</button>
-              <button id="btn-toggle-scale" class="btn" title="Toggle power axis scale">📊 Auto</button>
-              <button id="btn-toggle-avg-mode" class="btn" title="Toggle between 30d moving average and total average">📈 30d</button>
-              <button id="btn-last-hour" class="btn">Hour</button>
-              <button id="btn-last-day" class="btn">Day</button>
-              <button id="btn-last-week" class="btn">Week</button>
-              <button id="btn-last-month" class="btn">Month</button>
-              <button id="btn-last-year" class="btn">Year</button>
+              <button id="btn-toggle-scale" class="btn" title="Toggle power axis scale">Auto</button>
+              <button id="btn-toggle-avg-mode" class="btn" title="Toggle between 30d moving average and total average">30d</button>
+              <select id="time-range-select" class="btn">
+                <option value="">Range</option>
+                <option value="hour">Hour</option>
+                <option value="day">Day</option>
+                <option value="week">Week</option>
+                <option value="month">Month</option>
+                <option value="year">Year</option>
+              </select>
             </div>
           </div>
         </section>

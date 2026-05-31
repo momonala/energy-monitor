@@ -19,7 +19,7 @@ runner = CliRunner()
         ("--mqtt-port", "1883"),
         ("--server-url", "192.168.2.107"),
         ("--mqtt-topic", "tele/tasmota/#"),
-        ("--tasmota-ui-url", "http://192.168.2.110/"),
+        ("--tasmota-ui-url", "http://192.168.2.100/"),
         ("--database-path", "data/energy.db"),
         ("--database-url", "sqlite:///data/energy.db"),
         ("--tunnel-name", "raspberrypi-tunnel"),

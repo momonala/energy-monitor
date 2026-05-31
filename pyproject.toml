@@ -38,7 +38,7 @@ database_path = "data/energy.db"
 
 # MQTT settings
 mqtt_topic = "tele/tasmota/#"
-tasmota_ui_url = "http://192.168.2.110/"
+tasmota_ui_url = "http://192.168.2.100/"
 
 # Cloudflare tunnel settings
 tunnel_name = "raspberrypi-tunnel"

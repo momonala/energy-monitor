@@ -24,10 +24,10 @@ def _run_scheduled_job(job_name: str, fn) -> None:
 
 if __name__ == "__main__":
     schedule.every().hour.at(":00").do(_run_scheduled_job, "db_health_check", log_db_health_check)
-    logger.info("⏰ Scheduled hourly logging of DB health check")
+    logger.info("Scheduled hourly logging of DB health check")
     schedule.every().hour.at(":00").do(_run_scheduled_job, "db_git_backup", commit_db_if_changed)
-    logger.info("⏰ Scheduled hourly commit of DB if changed")
-    logger.info(f"⏰ Scheduled jobs: {get_scheduled_jobs()}")
+    logger.info("Scheduled hourly commit of DB if changed")
+    logger.info(f"Scheduled jobs: {get_scheduled_jobs()}")
 
     while True:
         schedule.run_pending()

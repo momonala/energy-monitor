@@ -40,17 +40,17 @@
 
       <!-- Chart Card -->
       <section class="mobile-chart-card card">
-        <button type="button" id="btn-show-chart" class="mobile-btn-show-chart">Show chart</button>
-        <div class="js-chart-content">
+        <button type="button" id="btn-show-chart" class="mobile-btn-show-chart" aria-expanded="false" aria-controls="mobile-chart-content">Show chart</button>
+        <div id="mobile-chart-content" class="js-chart-content">
           <div class="mobile-chart-wrapper">
             <div id="chart"></div>
             <div id="chart-loading" class="chart-loading">Loading chart...</div>
           </div>
           <div class="mobile-chart-toggles">
-            <button class="mobile-toggle mobile-toggle-power active" data-series="1">Power</button>
-            <button class="mobile-toggle mobile-toggle-energy active" data-series="2">Meter</button>
-            <button class="mobile-toggle mobile-toggle-daily active" data-series="3">Daily</button>
-            <button class="mobile-toggle mobile-toggle-typical active" data-series="4">30d Avg</button>
+            <button class="mobile-toggle mobile-toggle-power active" data-series="1" aria-pressed="true">Power</button>
+            <button class="mobile-toggle mobile-toggle-energy active" data-series="2" aria-pressed="true">Meter</button>
+            <button class="mobile-toggle mobile-toggle-daily active" data-series="3" aria-pressed="true">Daily</button>
+            <button class="mobile-toggle mobile-toggle-typical active" data-series="4" aria-pressed="true">30d Avg</button>
           </div>
         </div>
       </section>
@@ -59,7 +59,7 @@
       <section class="mobile-stats-grid">
         <!-- Energy & Cost Card -->
         <div class="mobile-stat-card card">
-          <div class="mobile-stat-title">Energy & Cost</div>
+          <div class="stats-title">Energy & Cost</div>
           <div class="mobile-stat-row mobile-stat-header">
             <span class="mobile-stat-label"></span>
             <span class="mobile-stat-col-header text-energy">Real</span>
@@ -79,7 +79,7 @@
 
         <!-- Power Statistics Card -->
         <div class="mobile-stat-card card">
-          <div class="mobile-stat-title">Power Statistics</div>
+          <div class="stats-title">Power Statistics</div>
           <div class="mobile-stat-row">
             <span class="mobile-stat-label text-power">Average</span>
             <span class="mobile-stat-value text-power"><span id="stat-avg">–</span> W</span>
@@ -96,7 +96,7 @@
 
         <!-- Data Info Card -->
         <div class="mobile-stat-card card">
-          <div class="mobile-stat-title">Data Info</div>
+          <div class="stats-title">Data Info</div>
           <div class="mobile-stat-row">
             <span class="mobile-stat-label">Current consumption</span>
             <span class="mobile-stat-value"><span id="stat-current-power" class="text-energy" aria-live="polite">–</span></span>
@@ -113,8 +113,8 @@
       </section>
 
       <!-- Daily Data Table -->
-      <section class="mobile-table-card card js-daily-table-section">
-        <div class="mobile-stat-title" id="daily-table-title">Daily Breakdown</div>
+      <section class="mobile-stat-card card js-daily-table-section">
+        <div class="stats-title" id="daily-table-title">Daily Breakdown</div>
         <div class="mobile-table-wrapper">
           <table class="mobile-table" id="daily-table">
             <thead>

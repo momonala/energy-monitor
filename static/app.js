@@ -13,11 +13,7 @@
   const statCount = document.getElementById("stat-count");
   const statRange = document.getElementById("stat-range");
   const btnReset = document.getElementById("btn-reset");
-  const btnLastYear = document.getElementById("btn-last-year");
-  const btnLastMonth = document.getElementById("btn-last-month");
-  const btnLastWeek = document.getElementById("btn-last-week");
-  const btnLastHour = document.getElementById("btn-last-hour");
-  const btnLastDay = document.getElementById("btn-last-day");
+  const timeRangeSelect = document.getElementById("time-range-select");
   const btnRefresh = document.getElementById("btn-refresh");
   // Trace toggle buttons
   const btnTogglePower = document.getElementById("btn-toggle-power");
@@ -71,7 +67,7 @@
   let dailyEnergyVals = []; // Interpolated daily energy values aligned with xVals
   let movingAvgDailyData = []; // 30-day moving average daily usage {t, kwh}
   let typicalDailyEnergyVals = []; // 30-day moving average values aligned with xVals
-  let costPerKwh = 0.3102;
+  let costPerKwh = window.EnergyMonitor.DEFAULT_COST_PER_KWH;
   let avgDailyEnergyUsage = null; // kWh per day from historical data
   let powerScaleMode = 'auto'; // 'auto' or 'fixed' - controls power Y-axis scaling
   let avgMode = '30d'; // '30d' for moving average or 'total' for flat line
@@ -79,9 +75,9 @@
   const seriesVisibility = {
     1: true, // Live Power
     2: true, // Daily Usage
-    4: true, // Avg Power
-    5: true, // Meter Reading
-    6: true, // Typical Daily Usage
+    3: true, // Avg Power
+    4: true, // Meter Reading
+    5: true, // Typical Daily Usage
   };
 
   let selection = { start: null, end: null };
@@ -94,9 +90,14 @@
   const POLLING_MS = 10000;
   const MIN_DRAG_PX = 10;
   const LIVE_THRESHOLD_SEC = 120;
+  const SECONDS_PER_DAY = SECONDS_PER_DAY;
+  const WS_PER_KWH = 3_600_000;       // Watt-seconds → kWh: divide by this
+  const WMS_PER_KWH = 3_600_000_000;  // Watt-milliseconds → kWh: divide by this
+  const EMA_ALPHA = 0.0001;            // ≈ 2-day smoothing at 10s sample rate
 
   let lastDataTimestamp = null;
   let isLiveView = true;
+  let pollController = null;
 
   // --------------------------------------------------------------------------
   // Loading State Helpers
@@ -134,10 +135,13 @@
     },
   };
 
+  const logoGlow = document.querySelector(".logo-glow");
+
   function setConnection(ok) {
     statusConn.textContent = ok ? "Connected" : "Offline";
     statusConn.style.borderColor = ok ? "rgba(34,197,94,0.6)" : "rgba(239,68,68,0.6)";
     statusConn.style.color = ok ? "#00c83f" : "#7f1d1d";
+    if (logoGlow) logoGlow.classList.toggle("logo-glow--offline", !ok);
   }
 
   /**
@@ -357,14 +361,11 @@
     if (endMs <= startMs) return;
     selection = { start: startMs, end: endMs };
     clearPointerSelectionOverlay();
-    
+
     if (u) {
-      // Update chart data
       u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
-      // Set scale AFTER setData to preserve the zoom
       u.setScale("x", { min: startMs / 1000, max: endMs / 1000 });
     }
-    updateLiveIndicator(); // Update immediately when view changes
     renderSelection();
     computeStatsLocal(startMs, endMs);
     updateLiveIndicator();
@@ -398,8 +399,7 @@
     // alpha ≈ 2/(N+1) where N is the equivalent window size
     // With 10-second sampling: 2 days = 17,280 points
     // For 2-day equivalent: alpha ≈ 2/(17280+1) ≈ 0.000116
-    // Using 0.0001 for clean 2-day smoothing
-    const alpha = 0.0001;
+    const alpha = EMA_ALPHA;
     
     rollingAvgVals = new Array(xVals.length).fill(null);
     
@@ -568,9 +568,9 @@
     updateLiveIndicator();
   }
 
-  async function fetchReadings({ start = null, end = null, incremental = false } = {}) {
+  async function fetchReadings({ start = null, end = null, incremental = false, signal = null } = {}) {
     const qs = new URLSearchParams();
-    
+
     // For incremental updates, only fetch data newer than what we have
     if (incremental && lastDataTimestamp) {
       qs.set("start", String(lastDataTimestamp + 1));
@@ -578,9 +578,10 @@
       qs.set("start", String(start));
     }
     if (end) qs.set("end", String(end));
-    
+
     try {
-      const rows = await fetchJson(`/api/readings?${qs.toString()}`);
+      const fetchOpts = signal ? { signal } : {};
+      const rows = await fetchJson(`/api/readings?${qs.toString()}`, fetchOpts);
       
       // No new data
       if (!rows.length) {
@@ -602,7 +603,7 @@
             const dE_kWh = b.e - a.e;
             const dt_ms = b.t - a.t;
             if (dt_ms > 0) {
-              const watts = Math.max(0, (dE_kWh * 3600000000) / dt_ms);
+              const watts = Math.max(0, (dE_kWh * WMS_PER_KWH) / dt_ms);
               derived.push([b.t, watts]);
             }
           }
@@ -670,6 +671,7 @@
         updatePeriodSummaries();
       }
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
       console.error(e);
       setConnection(false);
     }
@@ -718,7 +720,7 @@
           sumWs += wAvg * dtSec; // W*s
         }
       }
-      energyUsed = sumWs / 3600000; // Ws -> kWh
+      energyUsed = sumWs / WS_PER_KWH;
     }
     statEnergy.textContent = fmt.n(energyUsed, 2);
     if (statCostRange) {
@@ -732,7 +734,7 @@
     
     // Calculate average energy consumption based on historical average
     if (statAvgEnergy && avgDailyEnergyUsage) {
-      const durationDays = (endSec - startSec) / 86400;
+      const durationDays = (endSec - startSec) / SECONDS_PER_DAY;
       const avgEnergy = avgDailyEnergyUsage * durationDays;
       statAvgEnergy.textContent = fmt.n(avgEnergy, 2);
       if (statAvgCost) {
@@ -779,8 +781,8 @@
   function formatDuration(ms) {
     if (ms <= 0 || !Number.isFinite(ms)) return "0s";
     const s = Math.floor(ms / 1000);
-    const days = Math.floor(s / 86400);
-    const hours = Math.floor((s % 86400) / 3600);
+    const days = Math.floor(s / SECONDS_PER_DAY);
+    const hours = Math.floor((s % SECONDS_PER_DAY) / 3600);
     const mins = Math.floor((s % 3600) / 60);
     const secs = s % 60;
     const parts = [];
@@ -795,21 +797,6 @@
     const endMs = xVals[xVals.length - 1] * 1000;
     const startMs = Math.max(xVals[0] * 1000, endMs - durationMs);
     applySelectionRange(startMs, endMs);
-  }
-
-  function selectCalendarRange(startMs, endMs) {
-    if (!xVals.length) return;
-    applySelectionRange(startMs, endMs);
-  }
-
-  /**
-   * Check if we should handle this pointer event for selection.
-   * We handle all pointer types (mouse, touch, pen) for consistent cross-device behavior.
-   */
-  function shouldHandlePointer(evt) {
-    if (!evt) return false;
-    // Handle all pointer types for consistent iPad/desktop behavior
-    return evt.pointerType === "touch" || evt.pointerType === "pen" || evt.pointerType === "mouse";
   }
 
   function getRelativeXPx(evt) {
@@ -881,7 +868,7 @@
   }
 
   function handlePointerSelectStart(evt) {
-    if (!shouldHandlePointer(evt) || !u || !xVals.length) return;
+    if (!evt || !u || !xVals.length) return;
     
     // For touch, we want to prevent scrolling and other default behaviors
     evt.preventDefault();
@@ -931,8 +918,8 @@
       return; // Ignore taps and tiny drags
     }
     
-    // Clear active button since user made a custom selection
-    setActiveButton(null);
+    // Clear active range since user made a custom selection
+    setTimeRange(null);
     
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
     const from = Math.min(startMs, endMs);
@@ -957,15 +944,8 @@
     resetPointerSelectionState();
   }
 
-  // Time range buttons for active state tracking
-  const timeRangeButtons = [btnLastHour, btnLastDay, btnLastWeek, btnLastMonth, btnLastYear].filter(Boolean);
-
-  /**
-   * Set the active time range button and clear others
-   */
-  function setActiveButton(activeBtn) {
-    timeRangeButtons.forEach(btn => btn.classList.remove("active"));
-    if (activeBtn) activeBtn.classList.add("active");
+  function setTimeRange(value) {
+    if (timeRangeSelect) timeRangeSelect.value = value || '';
   }
 
   btnReset.addEventListener("click", () => {
@@ -973,7 +953,7 @@
       u.setScale("x", { min: xVals[0], max: xVals[xVals.length - 1] });
       u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
     }
-    setActiveButton(null); // Clear active state on reset
+    setTimeRange(null); // Clear active state on reset
     clearSelection();
   });
   
@@ -984,7 +964,7 @@
       powerScaleMode = powerScaleMode === 'auto' ? 'fixed' : 'auto';
       
       // Update button text
-      btnToggleScale.textContent = powerScaleMode === 'auto' ? '📊 Auto' : '📊 Fixed';
+      btnToggleScale.textContent = powerScaleMode === 'auto' ? 'Auto' : 'Fixed';
       
       // Recreate chart with new scale mode
       if (u) {
@@ -1016,7 +996,7 @@
       avgMode = avgMode === '30d' ? 'total' : '30d';
       
       // Update button text
-      btnToggleAvgMode.textContent = avgMode === '30d' ? '📈 30d' : '📈 Total';
+      btnToggleAvgMode.textContent = avgMode === '30d' ? '30d' : 'Total';
       
       // Update hover label
       if (hoverTypicalLabel) {
@@ -1024,8 +1004,8 @@
       }
       
       // Update series label
-      if (u && u.series && u.series[6]) {
-        u.series[6].label = avgMode === '30d' ? "30d Avg Daily Usage" : "Total Avg Daily Usage";
+      if (u && u.series && u.series[5]) {
+        u.series[5].label = avgMode === '30d' ? "30d Avg Daily Usage" : "Total Avg Daily Usage";
       }
       
       // Recalculate and update the chart
@@ -1062,20 +1042,17 @@
         }
       }
       
-      // Update button appearance (dim when trace is off; keep button visible so user can toggle back)
-      if (newVisibility) {
-        btn.classList.remove("inactive");
-      } else {
-        btn.classList.add("inactive");
-      }
+      // Update button appearance and accessible state
+      btn.classList.toggle("inactive", !newVisibility);
+      btn.setAttribute("aria-pressed", String(newVisibility));
     });
   }
 
   setupTraceToggle(btnTogglePower, 1);
   setupTraceToggle(btnToggleDaily, 2);
-  setupTraceToggle(btnToggleTypical, 6); // Toggle typical daily usage (series 6)
-  setupTraceToggle(btnToggleAvgPower, 4);
-  setupTraceToggle(btnToggleMeter, 5);
+  setupTraceToggle(btnToggleAvgPower, 3);
+  setupTraceToggle(btnToggleMeter, 4);
+  setupTraceToggle(btnToggleTypical, 5);
   if (btnRefresh) {
     btnRefresh.addEventListener("click", async () => {
       if (btnRefresh.disabled) return;
@@ -1095,88 +1072,52 @@
       }
     });
   }
-  if (btnLastHour) btnLastHour.addEventListener("click", () => {
-    setActiveButton(btnLastHour);
-    selectRelativeRange(60 * 60 * 1000);
-  });
-  if (btnLastDay) btnLastDay.addEventListener("click", () => {
-    setActiveButton(btnLastDay);
-    selectRelativeRange(24 * 60 * 60 * 1000);
-  });
-  if (btnLastWeek) btnLastWeek.addEventListener("click", () => {
-    setActiveButton(btnLastWeek);
-    const now = new Date();
-    const day = now.getDay(); // 0 Sunday .. 6 Saturday
-    const start = new Date(now);
-    start.setHours(0,0,0,0);
-    start.setDate(start.getDate() - day); // week starting Sunday
-    selectCalendarRange(start.getTime(), now.getTime());
-  });
-  if (btnLastMonth) btnLastMonth.addEventListener("click", () => {
-    setActiveButton(btnLastMonth);
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), 0);
-    selectCalendarRange(start.getTime(), now.getTime());
-  });
-  if (btnLastYear) btnLastYear.addEventListener("click", () => {
-    setActiveButton(btnLastYear);
-    const now = new Date();
-    const start = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), 0);
-    selectCalendarRange(start.getTime(), now.getTime());
-  });
+  if (timeRangeSelect) {
+    timeRangeSelect.addEventListener("change", () => {
+      const now = new Date();
+      switch (timeRangeSelect.value) {
+        case "hour":
+          selectRelativeRange(60 * 60 * 1000);
+          break;
+        case "day":
+          selectRelativeRange(24 * 60 * 60 * 1000);
+          break;
+        case "week": {
+          const start = new Date(now);
+          start.setHours(0, 0, 0, 0);
+          start.setDate(start.getDate() - now.getDay());
+          applySelectionRange(start.getTime(), now.getTime());
+          break;
+        }
+        case "month": {
+          const start = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), 0);
+          applySelectionRange(start.getTime(), now.getTime());
+          break;
+        }
+        case "year": {
+          const start = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), 0);
+          applySelectionRange(start.getTime(), now.getTime());
+          break;
+        }
+      }
+    });
+  }
 
   async function poll() {
-    // Use incremental update for polling (only fetch new data)
-    await fetchReadings({ incremental: true });
+    if (pollController) pollController.abort();
+    pollController = new AbortController();
+    await fetchReadings({ incremental: true, signal: pollController.signal });
     setTimeout(poll, POLLING_MS);
   }
+
+  window.addEventListener("pagehide", () => {
+    if (pollController) pollController.abort();
+  });
 
   window.addEventListener("resize", () => {
     if (u) {
       const { width, height } = getChartSize();
       u.setSize({ width, height });
-    }
-  });
-
-  // --------------------------------------------------------------------------
-  // Keyboard Shortcuts
-  // --------------------------------------------------------------------------
-  document.addEventListener("keydown", (e) => {
-    // Ignore if user is typing in an input
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
-
-    // Don't override browser shortcuts (Cmd/Ctrl + key)
-    if (e.metaKey || e.ctrlKey) return;
-    
-    switch (e.key.toLowerCase()) {
-      case "r":
-        e.preventDefault();
-        btnRefresh?.click();
-        break;
-      case "escape":
-        e.preventDefault();
-        btnReset?.click();
-        break;
-      case "1":
-        e.preventDefault();
-        btnLastHour?.click();
-        break;
-      case "2":
-        e.preventDefault();
-        btnLastDay?.click();
-        break;
-      case "3":
-        e.preventDefault();
-        btnLastWeek?.click();
-        break;
-      case "4":
-        e.preventDefault();
-        btnLastMonth?.click();
-        break;
-      case "5":
-        e.preventDefault();
-        btnLastYear?.click();
-        break;
     }
   });
 
@@ -1252,7 +1193,7 @@
       fetchStats(last30DaysMs, nowMs),
       fetchStats(last7DaysMs, nowMs),
       fetchStats(last1DayMs, nowMs),
-      fetchLatestReading(),
+      fetchJson("/api/latest_reading"),
     ]);
 
     const [monthResult, weekResult, dayResult, latestResult] = results;
@@ -1309,10 +1250,6 @@
       if (statDayAvgEnergy) statDayAvgEnergy.textContent = "–";
       if (statDayAvgCost) statDayAvgCost.textContent = "–";
     }
-  }
-
-  async function fetchLatestReading() {
-    return fetchJson("/api/latest_reading");
   }
 
   async function fetchStats(startMs, endMs) {

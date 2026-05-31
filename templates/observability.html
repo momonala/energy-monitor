@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>energy-monitor · Observability</title>
+  <link rel="stylesheet" href="/static/observability.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js" defer></script>
+</head>
+<body>
+
+<header class="page-header">
+  <div class="header-row">
+    <div>
+      <p class="eyebrow">energy-monitor</p>
+      <h1>Observability</h1>
+    </div>
+    <div class="header-controls">
+      <label for="windowAmount" class="visually-hidden">Time window amount</label>
+      <input id="windowAmount" type="number" class="control-input" value="1" min="1" aria-label="Time window amount">
+      <label for="windowUnit" class="visually-hidden">Time window unit</label>
+      <select id="windowUnit" class="control-select" aria-label="Time window unit">
+        <option value="hours">hours</option>
+        <option value="days" selected>days</option>
+        <option value="weeks">weeks</option>
+      </select>
+      <label for="rollupWindow" class="visually-hidden">Rollup window</label>
+      <select id="rollupWindow" class="control-select" aria-label="Rollup window">
+        <option value="auto">auto</option>
+        <option value="1">1 min</option>
+        <option value="2">2 min</option>
+        <option value="5">5 min</option>
+        <option value="10">10 min</option>
+        <option value="30">30 min</option>
+        <option value="60" selected>1 hour</option>
+      </select>
+      <button id="refreshBtn" type="button" class="btn">Refresh</button>
+      <span id="lastUpdated" class="last-updated"></span>
+    </div>
+  </div>
+</header>
+
+<main class="dashboard" data-project="{{ spyglass_project }}">
+
+  <section class="card card-full" aria-labelledby="dbWritesHeading">
+    <div class="card-header">
+      <h2 id="dbWritesHeading">DB Writes</h2>
+    </div>
+    <div class="chart-card chart-card-wide" style="min-height:200px">
+      <canvas id="chartDbWrites" aria-label="DB writes over time"></canvas>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="latencyHeading">
+    <div class="card-header">
+      <h2 id="latencyHeading">Write Latency (ms)</h2>
+    </div>
+    <div class="chart-card" style="border:none;padding:0;min-height:200px">
+      <canvas id="chartLatency" aria-label="DB write and queue wait latency over time"></canvas>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="parityHeading">
+    <div class="card-header">
+      <h2 id="parityHeading">Parity</h2>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table parity-table">
+        <thead>
+          <tr>
+            <th scope="col">Metric</th>
+            <th scope="col" class="parity-val">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>MQTT received</td>
+            <td class="parity-val"><span id="stat-mqtt">—</span></td>
+          </tr>
+          <tr>
+            <td>DB saved</td>
+            <td class="parity-val"><span id="stat-saved">—</span></td>
+          </tr>
+          <tr>
+            <td>Duplicates</td>
+            <td class="parity-val"><span id="stat-dup">—</span></td>
+          </tr>
+          <tr>
+            <td>Save errors</td>
+            <td class="parity-val"><span id="stat-err">—</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="downtimeHeading">
+    <div class="card-header">
+      <h2 id="downtimeHeading">Downtime</h2>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table parity-table">
+        <thead>
+          <tr>
+            <th scope="col">Metric</th>
+            <th scope="col" class="parity-val">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Disconnects</td>
+            <td class="parity-val"><span id="stat-disconnects">—</span></td>
+          </tr>
+          <tr>
+            <td>Device offline (LWT)</td>
+            <td class="parity-val"><span id="stat-device-offline">—</span></td>
+          </tr>
+          <tr>
+            <td>Device errors (INFO3)</td>
+            <td class="parity-val"><span id="stat-device-errors">—</span></td>
+          </tr>
+          <tr>
+            <td>Low-reading alerts</td>
+            <td class="parity-val"><span id="stat-low">—</span></td>
+          </tr>
+          <tr>
+            <td>Readings last hour</td>
+            <td class="parity-val"><span id="stat-last-hour">—</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="intervalHeading">
+    <div class="card-header">
+      <h2 id="intervalHeading">MQTT Interval</h2>
+      <p class="card-subtitle">Time between messages</p>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table parity-table">
+        <thead>
+          <tr>
+            <th scope="col">Stat</th>
+            <th scope="col" class="parity-val">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Min</td>
+            <td class="parity-val"><span id="stat-interval-min">—</span></td>
+          </tr>
+          <tr>
+            <td>Avg</td>
+            <td class="parity-val"><span id="stat-interval-avg">—</span></td>
+          </tr>
+          <tr>
+            <td>Max</td>
+            <td class="parity-val"><span id="stat-interval-max">—</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+
+  <section class="card card-full" aria-labelledby="logsHeading">
+    <div class="card-header card-header-row">
+      <h2 id="logsHeading">Logs</h2>
+      <div class="view-toggle" role="group" aria-label="Log view">
+        <button id="logsViewBtn" type="button" class="btn is-active">Logs</button>
+        <button id="patternsViewBtn" type="button" class="btn">Patterns</button>
+      </div>
+    </div>
+
+    <div class="log-histogram">
+      <canvas id="chartLogLevels" aria-label="Log count by level over time"></canvas>
+    </div>
+
+    <div class="logs-filter-bar">
+      <div class="filter-group">
+        <label for="logLevelFilter" class="filter-label">Level</label>
+        <select id="logLevelFilter" class="filter-select">
+          <option value="">All levels</option>
+          <option value="DEBUG">DEBUG</option>
+          <option value="INFO">INFO</option>
+          <option value="WARNING">WARNING</option>
+          <option value="ERROR">ERROR</option>
+          <option value="CRITICAL">CRITICAL</option>
+        </select>
+      </div>
+      <div class="filter-group filter-group-grow">
+        <label for="logLoggerFilter" class="filter-label">Logger</label>
+        <input id="logLoggerFilter" type="search" class="filter-input" placeholder="src.database, src.mqtt…" autocomplete="off">
+      </div>
+      <div class="filter-group filter-group-grow">
+        <label for="logContentFilter" class="filter-label">Search</label>
+        <input id="logContentFilter" type="search" class="filter-input" placeholder="message content" autocomplete="off">
+      </div>
+    </div>
+
+    <div id="logsView">
+      <p id="logsCount" class="logs-count">Showing 0 of 0 logs</p>
+      <div class="table-wrap">
+        <table class="data-table logs-table">
+          <thead>
+            <tr>
+              <th scope="col">Time</th>
+              <th scope="col">Level</th>
+              <th scope="col">Logger</th>
+              <th scope="col">Message</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody">
+            <tr><td colspan="4" class="logs-empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="patternsView" hidden>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">Count</th>
+              <th scope="col">Pattern</th>
+            </tr>
+          </thead>
+          <tbody id="patternsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="/static/observability.js" defer></script>
+
+</body>
+</html>

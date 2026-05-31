@@ -143,11 +143,11 @@ def save_energy_reading(tasmota_payload: str):
                 session.commit()
                 session.refresh(reading)
         metrics.increment("db.readings.saved")
-        logger.debug(f"🟢 Saved {reading=}")
+        logger.debug(f"Saved {reading=}")
         return
     except sqlalchemy.exc.IntegrityError:
         metrics.increment("db.readings.duplicate")
-        logger.info(f"⚠️ Reading already exists for {timestamp=}")
+        logger.warning(f"Reading already exists for {timestamp=}")
         return
 
 
@@ -218,7 +218,7 @@ def log_db_health_check():
         report_missing_data_to_telegram(f"Only {num_readings_last_hour} readings in the last hour")
     num_total_readings = num_total_energy_readings()
     metrics.gauge("db.readings.total", num_total_readings)
-    logger.info(f"[log_db_health_check] {num_readings_last_hour=} {num_total_readings=}")
+    logger.info(f"{num_readings_last_hour=} {num_total_readings=}")
 
 
 @lru_cache(maxsize=1000)
