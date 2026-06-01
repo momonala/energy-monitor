@@ -3,7 +3,6 @@
 import json
 import logging
 import time
-import urllib.request
 from pathlib import Path
 
 from flask import Flask
@@ -18,7 +17,6 @@ from src.config import FLASK_PORT
 from src.config import MQTT_PORT
 from src.config import SERVER_URL
 from src.config import SPYGLASS_HOST
-from src.config import SPYGLASS_PROJECT
 from src.config import TASMOTA_UI_URL
 from src.config import TOPIC
 from src.database import get_daily_energy_usage
@@ -185,28 +183,8 @@ def status():
 
 @app.get("/observability")
 def observability():
-    """Serve the observability dashboard."""
-    return render_template(
-        "observability.html",
-        spyglass_project=SPYGLASS_PROJECT,
-    )
-
-
-@app.get("/api/spyglass/<path:path>")
-def spyglass_proxy(path):
-    """Proxy requests to the local Spyglass server."""
-    params = request.query_string.decode()
-    url = f"http://{SPYGLASS_HOST}/{path}"
-    if params:
-        url += f"?{params}"
-    try:
-        with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310
-            body = resp.read()
-            content_type = resp.headers.get("Content-Type", "application/octet-stream")
-            return body, 200, {"Content-Type": content_type}
-    except Exception as exc:
-        logger.warning(f"spyglass proxy error for {path}: {exc}")
-        return jsonify({"error": "spyglass unavailable"}), 502
+    """Redirect to the Spyglass-hosted observability dashboard."""
+    return redirect(f"http://{SPYGLASS_HOST}/dashboard/energy-monitor")
 
 
 def main():
