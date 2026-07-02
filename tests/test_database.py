@@ -161,3 +161,40 @@ def test_get_stats_handles_empty_range(test_db):
         assert stats["energy_used_kwh"] is None
     finally:
         src.database.SessionLocal = original_session
+
+
+def test_save_energy_reading_accepts_bitshake_payload(test_db):
+    """bitShake firmware uses ImportActive/ExportActive and power_L* field names."""
+    import src.database
+    from src.database import EnergyReading
+    from src.database import save_energy_reading
+
+    original_session = src.database.SessionLocal
+    src.database.SessionLocal = test_db
+
+    try:
+        save_energy_reading(
+            {
+                "MT681": {
+                    "ImportActive": 23755.579,
+                    "ExportActive": 0.0,
+                    "Power": 146,
+                    "power_L1": 0,
+                    "power_L2": 0,
+                    "power_L3": 0,
+                    "server_id": "0649534b010bcb2986eb",
+                }
+            }
+        )
+
+        session = test_db()
+        reading = session.query(EnergyReading).one()
+        session.close()
+
+        assert reading.meter_id == "0649534b010bcb2986eb"
+        assert reading.power_watts == pytest.approx(146.0)
+        assert reading.energy_in_kwh == pytest.approx(23755.579)
+        assert reading.energy_out_kwh is None
+        assert reading.power_phase_1_watts == pytest.approx(0.0)
+    finally:
+        src.database.SessionLocal = original_session

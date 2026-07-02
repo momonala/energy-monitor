@@ -12,6 +12,7 @@ import src.observability  # noqa: F401
 from src.config import MQTT_PORT
 from src.config import SERVER_URL
 from src.config import TOPIC
+from src.database import format_mt681_summary
 from src.database import init_db
 from src.database import save_energy_reading
 from src.observability import get_logger
@@ -41,6 +42,7 @@ def db_worker():
         payload, enqueued_at = item
         wait_ms = (time.perf_counter() - enqueued_at) * 1000
         metrics.timing("mqtt.db_queue.wait_ms", wait_ms)
+        logger.info("Saving energy reading to DB (queue wait %.0fms)", wait_ms)
         try:
             save_energy_reading(tasmota_payload=payload)
         except Exception:
@@ -60,7 +62,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code.is_failure:
         logger.error(f"[connect] failed: {reason_code}")
         return
-    logger.info("[connect] connected OK")
+    logger.info("[connect] connected OK, subscribing to %s", TOPIC)
     client.subscribe(TOPIC)
 
 
@@ -87,10 +89,15 @@ def on_message(client, userdata, msg):
         if _last_sensor_time is not None:
             metrics.timing("mqtt.sensor.interval_ms", (now - _last_sensor_time) * 1000)
         _last_sensor_time = now
-        logger.debug(f"[msg] {msg.topic}: {data}")
+        mt_payload = data.get("MT681")
+        if isinstance(mt_payload, dict):
+            summary = format_mt681_summary(mt_payload)
+        else:
+            summary = f"payload_keys={list(data.keys())}"
+        logger.info("[mqtt] received SENSOR: %s", summary)
         metrics.increment("mqtt.messages.mqtt_reading")
         metrics.gauge("mqtt.db_queue.depth", db_queue.qsize())
-        db_queue.put((data, time.perf_counter()))  # enqueue DB write
+        db_queue.put((data, time.perf_counter()))
     elif msg.topic == STATE_TOPIC:
         logger.info(f"[msg] {msg.topic}: {data}")
     elif msg.topic == INFO3_TOPIC:

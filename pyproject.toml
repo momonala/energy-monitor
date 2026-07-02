@@ -29,7 +29,7 @@ dependencies = [
 spyglass_host = "localhost:5013"
 
 # Server settings
-server_url = "192.168.2.107"
+server_url = "localhost"
 flask_port = 5008
 mqtt_port = 1883
 
@@ -38,7 +38,7 @@ database_path = "data/energy.db"
 
 # MQTT settings
 mqtt_topic = "tele/tasmota/#"
-tasmota_ui_url = "http://192.168.2.100/"
+tasmota_ui_url = "http://192.168.2.116/"
 
 # Cloudflare tunnel settings
 tunnel_name = "raspberrypi-tunnel"

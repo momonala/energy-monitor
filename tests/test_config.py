@@ -17,9 +17,9 @@ runner = CliRunner()
         ("--project-version", "0.1.0"),
         ("--flask-port", "5008"),
         ("--mqtt-port", "1883"),
-        ("--server-url", "192.168.2.107"),
+        ("--server-url", "localhost"),
         ("--mqtt-topic", "tele/tasmota/#"),
-        ("--tasmota-ui-url", "http://192.168.2.100/"),
+        ("--tasmota-ui-url", "http://192.168.2.116/"),
         ("--database-path", "data/energy.db"),
         ("--database-url", "sqlite:///data/energy.db"),
         ("--tunnel-name", "raspberrypi-tunnel"),
@@ -41,8 +41,9 @@ def test_config_all_returns_all_values():
     assert "project_version=0.1.0" in result.stdout
     assert "flask_port=5008" in result.stdout
     assert "mqtt_port=1883" in result.stdout
-    assert "server_url=192.168.2.107" in result.stdout
+    assert "server_url=localhost" in result.stdout
     assert "mqtt_topic=tele/tasmota/#" in result.stdout
+    assert "tasmota_ui_url=http://192.168.2.116/" in result.stdout
     assert "database_url=sqlite:///data/energy.db" in result.stdout
     assert "tunnel_name=raspberrypi-tunnel" in result.stdout
     assert "domain_suffix=mnalavadi.org" in result.stdout

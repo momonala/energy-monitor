@@ -117,21 +117,59 @@ def _nullable_float(val, *, treat_zero_as_none: bool = False):
     return f
 
 
-def save_energy_reading(tasmota_payload: str):
+def _first_present(payload: dict, *keys: str):
+    """Return the first non-None value for the given keys."""
+    for key in keys:
+        value = payload.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _normalize_mt681_payload(mt_payload: dict) -> dict:
+    """Map MT681 fields from Tasmota payloads (supports multiple firmware variants)."""
+    meter_id = _first_present(mt_payload, "Meter_id", "server_id")
+    return {
+        "meter_id": str(meter_id) if meter_id is not None else None,
+        "power_watts": _nullable_float(_first_present(mt_payload, "Power")),
+        "energy_in_kwh": _nullable_float(
+            _first_present(mt_payload, "E_in", "ImportActive"),
+            treat_zero_as_none=True,
+        ),
+        "energy_out_kwh": _nullable_float(
+            _first_present(mt_payload, "E_out", "ExportActive"),
+            treat_zero_as_none=True,
+        ),
+        "power_phase_1_watts": _nullable_float(_first_present(mt_payload, "Power_p1", "power_L1")),
+        "power_phase_2_watts": _nullable_float(_first_present(mt_payload, "Power_p2", "power_L2")),
+        "power_phase_3_watts": _nullable_float(_first_present(mt_payload, "Power_p3", "power_L3")),
+    }
+
+
+def format_mt681_summary(mt_payload: dict) -> str:
+    """Format normalized MT681 fields for logging."""
+    fields = _normalize_mt681_payload(mt_payload)
+    return (
+        f"meter_id={fields['meter_id']} "
+        f"power={fields['power_watts']}W "
+        f"E_in={fields['energy_in_kwh']} "
+        f"E_out={fields['energy_out_kwh']}"
+    )
+
+
+def save_energy_reading(tasmota_payload: dict):
     """Persist a single MT681 energy reading payload."""
     mt_payload = tasmota_payload["MT681"]
+    fields = _normalize_mt681_payload(mt_payload)
     timestamp = datetime.now(local_timezone())
-    # Store 0 as NULL: cumulative E_in/E_out should not go to 0 after being high (meter reset/glitch).
-    energy_in = _nullable_float(mt_payload.get("E_in"), treat_zero_as_none=True)
-    energy_out = _nullable_float(mt_payload.get("E_out"), treat_zero_as_none=True)
     reading = EnergyReading(
-        meter_id=str(mt_payload.get("Meter_id")),
-        power_watts=float(mt_payload.get("Power")),
-        energy_in_kwh=energy_in,
-        energy_out_kwh=energy_out,
-        power_phase_1_watts=float(mt_payload.get("Power_p1")),
-        power_phase_2_watts=float(mt_payload.get("Power_p2")),
-        power_phase_3_watts=float(mt_payload.get("Power_p3")),
+        meter_id=fields["meter_id"],
+        power_watts=fields["power_watts"],
+        energy_in_kwh=fields["energy_in_kwh"],
+        energy_out_kwh=fields["energy_out_kwh"],
+        power_phase_1_watts=fields["power_phase_1_watts"],
+        power_phase_2_watts=fields["power_phase_2_watts"],
+        power_phase_3_watts=fields["power_phase_3_watts"],
         timestamp=timestamp,
         raw_payload=json.dumps(mt_payload),
     )
@@ -143,7 +181,14 @@ def save_energy_reading(tasmota_payload: str):
                 session.commit()
                 session.refresh(reading)
         metrics.increment("db.readings.saved")
-        logger.debug(f"Saved {reading=}")
+        logger.info(
+            "Saved energy reading: meter_id=%s power=%sW E_in=%s E_out=%s timestamp=%s",
+            reading.meter_id,
+            reading.power_watts,
+            reading.energy_in_kwh,
+            reading.energy_out_kwh,
+            timestamp.isoformat(),
+        )
         return
     except sqlalchemy.exc.IntegrityError:
         metrics.increment("db.readings.duplicate")
