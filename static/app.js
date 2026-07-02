@@ -90,7 +90,7 @@
   const POLLING_MS = 10000;
   const MIN_DRAG_PX = 10;
   const LIVE_THRESHOLD_SEC = 120;
-  const SECONDS_PER_DAY = SECONDS_PER_DAY;
+  const SECONDS_PER_DAY = 86_400;
   const WS_PER_KWH = 3_600_000;       // Watt-seconds → kWh: divide by this
   const WMS_PER_KWH = 3_600_000_000;  // Watt-milliseconds → kWh: divide by this
   const EMA_ALPHA = 0.0001;            // ≈ 2-day smoothing at 10s sample rate
