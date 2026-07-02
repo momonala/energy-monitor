@@ -91,6 +91,7 @@
   const MIN_DRAG_PX = 10;
   const LIVE_THRESHOLD_SEC = 120;
   const SECONDS_PER_DAY = 86_400;
+  const DEFAULT_CHART_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
   const WS_PER_KWH = 3_600_000;       // Watt-seconds → kWh: divide by this
   const WMS_PER_KWH = 3_600_000_000;  // Watt-milliseconds → kWh: divide by this
   const EMA_ALPHA = 0.0001;            // ≈ 2-day smoothing at 10s sample rate
@@ -98,6 +99,38 @@
   let lastDataTimestamp = null;
   let isLiveView = true;
   let pollController = null;
+  let chartLookbackMs = DEFAULT_CHART_LOOKBACK_MS;
+
+  function getChartWindowEndMs() {
+    return Date.now();
+  }
+
+  function getChartWindowStartMs() {
+    return getChartWindowEndMs() - chartLookbackMs;
+  }
+
+  function trimToChartWindow() {
+    if (!xVals.length) return;
+    const minSec = Math.floor(getChartWindowStartMs() / 1000);
+    let trimIndex = 0;
+    while (trimIndex < xVals.length && xVals[trimIndex] < minSec) {
+      trimIndex++;
+    }
+    if (trimIndex > 0) {
+      xVals = xVals.slice(trimIndex);
+      yVals = yVals.slice(trimIndex);
+      eVals = eVals.slice(trimIndex);
+    }
+  }
+
+  async function loadChartWindow() {
+    const endMs = getChartWindowEndMs();
+    const startMs = getChartWindowStartMs();
+    await Promise.all([
+      fetchReadings({ start: startMs, end: endMs }),
+      fetchEnergySummary({ start: startMs, end: endMs }),
+    ]);
+  }
 
   // --------------------------------------------------------------------------
   // Loading State Helpers
@@ -490,11 +523,15 @@
   }
 
   /**
-   * Fetch energy summary (avg daily + daily usage + 30d moving avg) once at startup.
+   * Fetch energy summary (avg daily + daily usage + 30d moving avg).
    */
-  async function fetchEnergySummary() {
+  async function fetchEnergySummary({ start = null, end = null } = {}) {
     try {
-      const data = await fetchJson("/api/energy_summary");
+      const qs = new URLSearchParams();
+      if (start != null) qs.set("start", String(start));
+      if (end != null) qs.set("end", String(end));
+      const suffix = qs.toString();
+      const data = await fetchJson(suffix ? `/api/energy_summary?${suffix}` : "/api/energy_summary");
       avgDailyEnergyUsage = data.avg_daily ?? null;
       dailyEnergyData = data.daily;
       movingAvgDailyData = data.moving_avg_30d || [];
@@ -645,7 +682,8 @@
           xVals = xVals.concat(newXVals.slice(appendIndex));
           yVals = yVals.concat(newYVals.slice(appendIndex));
           eVals = eVals.concat(newEVals.slice(appendIndex));
-          
+          trimToChartWindow();
+
           // Flash the connection indicator to show new data arrived
           flashLiveIndicator();
         }
@@ -1063,8 +1101,7 @@
       try {
         // Clear Python cache first, then refresh data
         await fetch("/api/clear_cache", { cache: "no-cache" }).catch(() => {});
-        await fetchReadings();
-        await fetchEnergySummary();
+        await loadChartWindow();
       } finally {
         btnRefresh.disabled = false;
         btnRefresh.textContent = originalLabel;
@@ -1073,8 +1110,9 @@
     });
   }
   if (timeRangeSelect) {
-    timeRangeSelect.addEventListener("change", () => {
+    timeRangeSelect.addEventListener("change", async () => {
       const now = new Date();
+      const nowMs = now.getTime();
       switch (timeRangeSelect.value) {
         case "hour":
           selectRelativeRange(60 * 60 * 1000);
@@ -1083,20 +1121,36 @@
           selectRelativeRange(24 * 60 * 60 * 1000);
           break;
         case "week": {
-          const start = new Date(now);
-          start.setHours(0, 0, 0, 0);
-          start.setDate(start.getDate() - now.getDay());
-          applySelectionRange(start.getTime(), now.getTime());
+          chartLookbackMs = 7 * 24 * 60 * 60 * 1000;
+          showLoading();
+          try {
+            await loadChartWindow();
+            applySelectionRange(getChartWindowStartMs(), nowMs, false);
+          } finally {
+            hideLoading();
+          }
           break;
         }
         case "month": {
-          const start = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), 0);
-          applySelectionRange(start.getTime(), now.getTime());
+          chartLookbackMs = 30 * 24 * 60 * 60 * 1000;
+          showLoading();
+          try {
+            await loadChartWindow();
+            applySelectionRange(getChartWindowStartMs(), nowMs, false);
+          } finally {
+            hideLoading();
+          }
           break;
         }
         case "year": {
-          const start = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), 0);
-          applySelectionRange(start.getTime(), now.getTime());
+          chartLookbackMs = 365 * 24 * 60 * 60 * 1000;
+          showLoading();
+          try {
+            await loadChartWindow();
+            applySelectionRange(getChartWindowStartMs(), nowMs, false);
+          } finally {
+            hideLoading();
+          }
           break;
         }
       }
@@ -1129,9 +1183,11 @@
   
   // Load chart data and summary in parallel for faster initial render
   // Use allSettled to ensure updatePeriodSummaries runs even if one fetch fails
+  const initialEndMs = getChartWindowEndMs();
+  const initialStartMs = getChartWindowStartMs();
   Promise.allSettled([
-    fetchReadings(),      // Chart data
-    fetchEnergySummary()  // Daily averages for "Typical" column
+    fetchReadings({ start: initialStartMs, end: initialEndMs }),
+    fetchEnergySummary({ start: initialStartMs, end: initialEndMs }),
   ])
     .then((results) => {
       // Log any failures for debugging
@@ -1146,11 +1202,9 @@
       hideLoading();
       loadCostFromStorage();
       
-      // Auto-apply default selection (entire loaded dataset) on initial load
+      // Default to the loaded chart window
       if (xVals.length > 0) {
-        const startMs = xVals[0] * 1000;
-        const endMs = xVals[xVals.length - 1] * 1000;
-        applySelectionRange(startMs, endMs, false);
+        applySelectionRange(initialStartMs, initialEndMs, false);
       }
       
       // Always call updatePeriodSummaries - it will populate "Real" values

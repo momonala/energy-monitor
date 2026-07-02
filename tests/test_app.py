@@ -48,6 +48,32 @@ def test_api_readings_accepts_time_params(client):
         assert isinstance(response.get_json(), list)
 
 
+def test_api_energy_summary_accepts_time_params(client):
+    """Energy summary endpoint accepts start/end parameters."""
+    with patch("src.app.get_monthly_avg_daily_usage", return_value=5.0):
+        with patch("src.app.get_daily_energy_usage", return_value=[]):
+            with patch("src.app.get_moving_avg_daily_usage", return_value=[]):
+                response = client.get("/api/energy_summary?start=1704067200000&end=1704153600000")
+                assert response.status_code == 200
+                data = response.get_json()
+                assert data["avg_daily"] == 5.0
+                assert data["daily"] == []
+                assert data["moving_avg_30d"] == []
+
+
+def test_api_energy_summary_without_params_uses_full_history(client):
+    """Energy summary without params keeps full-history behavior for compare page."""
+    with patch("src.app.get_monthly_avg_daily_usage", return_value=5.0):
+        with patch("src.app.get_daily_energy_usage", return_value=[{"t": 1, "kwh": 1.0}]) as mock_daily:
+            with patch(
+                "src.app.get_moving_avg_daily_usage", return_value=[{"t": 1, "kwh": 1.0}]
+            ) as mock_moving:
+                response = client.get("/api/energy_summary")
+                assert response.status_code == 200
+                mock_daily.assert_called_once_with(start=None, end=None)
+                mock_moving.assert_called_once()
+
+
 @pytest.mark.parametrize(
     "start,end,expected_status",
     [

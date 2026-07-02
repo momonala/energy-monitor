@@ -177,7 +177,12 @@ Response:
 
 ### `/api/energy_summary`
 
-No parameters required.
+Query params:
+
+- `start` - ISO-8601 string or ms since epoch (optional; limits returned `daily` and `moving_avg_30d`)
+- `end` - ISO-8601 string or ms since epoch (optional; defaults to now)
+
+When `start`/`end` are omitted, returns full default history (~52 weeks). When scoped, the server still loads up to 30 days of history internally so the moving average is accurate.
 
 Response:
 

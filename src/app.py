@@ -3,6 +3,8 @@
 import json
 import logging
 import time
+from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 
 from flask import Flask
@@ -27,6 +29,7 @@ from src.database import get_stats
 from src.database import latest_energy_reading
 from src.database import num_energy_readings_last_hour
 from src.database import num_total_energy_readings
+from src.helpers import local_timezone
 from src.helpers import parse_time_param
 from src.mqtt import get_mqtt_client
 from src.observability import get_logger
@@ -66,6 +69,7 @@ def _spyglass_request_end(response):
 
 # Mobile user-agent patterns (exclude iPad - it should see desktop)
 MOBILE_PATTERNS = ["Mobile", "Android", "iPhone", "iPod", "BlackBerry", "Windows Phone"]
+MOVING_AVG_WINDOW_DAYS = 30
 
 
 def is_mobile_user_agent() -> bool:
@@ -106,20 +110,48 @@ def api_readings():
     return jsonify(data)
 
 
+def _filter_daily_by_ms(daily_data: list[dict], start_ms: int, end_ms: int) -> list[dict]:
+    """Return daily entries whose timestamp falls within [start_ms, end_ms]."""
+    return [d for d in daily_data if start_ms <= d["t"] <= end_ms]
+
+
 @app.get("/api/energy_summary")
 def energy_summary():
     """Return avg daily, per-day energy usage, and 30-day moving average."""
+    start = parse_time_param(request.args.get("start"))
+    end = parse_time_param(request.args.get("end"))
+    if end is not None and start is not None and end < start:
+        start, end = end, start
+
     try:
         avg_daily = get_monthly_avg_daily_usage()
     except ValueError as e:
         logger.warning(f"⚠️ [energy_summary] Error getting monthly avg daily usage: {e}")
         avg_daily = None
-    daily_data = get_daily_energy_usage(start=None, end=None)
+
+    if start is None and end is None:
+        daily_data = get_daily_energy_usage(start=None, end=None)
+        moving_avg_30d = get_moving_avg_daily_usage(daily_data, window_days=MOVING_AVG_WINDOW_DAYS)
+    else:
+        tz = local_timezone()
+        end_bound = end if end is not None else datetime.now(tz)
+        moving_avg_start = end_bound - timedelta(days=MOVING_AVG_WINDOW_DAYS)
+        fetch_start = min(start, moving_avg_start) if start is not None else moving_avg_start
+        all_daily = get_daily_energy_usage(start=fetch_start, end=end_bound)
+        start_ms = int((start if start is not None else fetch_start).timestamp() * 1000)
+        end_ms = int(end_bound.timestamp() * 1000)
+        daily_data = _filter_daily_by_ms(all_daily, start_ms, end_ms)
+        moving_avg_30d = _filter_daily_by_ms(
+            get_moving_avg_daily_usage(all_daily, window_days=MOVING_AVG_WINDOW_DAYS),
+            start_ms,
+            end_ms,
+        )
+
     return jsonify(
         {
             "avg_daily": avg_daily,
             "daily": daily_data,
-            "moving_avg_30d": get_moving_avg_daily_usage(daily_data, window_days=30),
+            "moving_avg_30d": moving_avg_30d,
         }
     )
 

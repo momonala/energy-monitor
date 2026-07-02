@@ -229,7 +229,7 @@
         showErrorInitial();
       });
 
-    fetchJson("/api/energy_summary")
+    fetchJson(`/api/energy_summary?start=${startMs}&end=${now}`)
       .then((summaryData) => {
         dailyEnergyData = summaryData.daily || [];
         movingAvgData = summaryData.moving_avg_30d || [];
@@ -262,7 +262,7 @@
     try {
       const [readings, summaryData] = await Promise.all([
         fetchJson(`/api/readings?start=${startMs}&end=${now}`, { signal }),
-        fetchJson("/api/energy_summary", { signal }),
+        fetchJson(`/api/energy_summary?start=${startMs}&end=${now}`, { signal }),
       ]);
 
       dailyEnergyData = summaryData.daily || [];
