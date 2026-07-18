@@ -6,7 +6,15 @@
   "use strict";
 
   const EM = window.EnergyMonitor;
-  const { fetchJson, Fmt, loadCostPerKwh, alignDailyDataToTimestamps, processReadingsData } = EM;
+  const {
+    fetchJson,
+    Fmt,
+    loadCostPerKwh,
+    alignDailyDataToTimestamps,
+    processReadingsData,
+    getCompareChartAxes,
+    getCompareChartSeries,
+  } = EM;
   if (!fetchJson || !Fmt || !loadCostPerKwh || !alignDailyDataToTimestamps || !processReadingsData) {
     console.error("Compare: EnergyMonitor (shared.js) must load first.");
     return;
@@ -60,7 +68,7 @@
     if (compareLoading) compareLoading.classList.toggle("hidden", !loading);
     if (btnCompare) {
       btnCompare.disabled = loading;
-      btnCompare.classList.toggle("loading", loading);
+      btnCompare.classList.toggle("btn-loading", loading);
     }
   }
 
@@ -299,20 +307,8 @@
       width,
       height,
       scales,
-      axes: [
-        { stroke: "#a3a3a3", grid: { stroke: "rgba(255,255,255,0.06)" }, ticks: { stroke: "rgba(255,255,255,0.12)" }, size: 40 },
-        { label: "W", stroke: "#a3a3a3", grid: { show: false }, size: 40 },
-        { side: 1, label: "kWh", stroke: "rgb(235, 133, 37)", grid: { show: false }, scale: "y2", size: 40 },
-        { side: 1, label: "Daily", stroke: "rgb(255, 220, 50)", grid: { show: false }, scale: "y3", size: 40 },
-      ],
-      series: [
-        {},
-        { label: "Power", stroke: "rgba(37, 99, 235, 1)", fill: "rgba(37,99,235,0.12)", width: 1.5, scale: "y" },
-        { label: "Daily", stroke: "rgb(255, 220, 50)", width: 2, scale: "y3" },
-        { label: "Avg P", stroke: "rgb(96, 165, 250)", width: 1.5, scale: "y" },
-        { label: "Meter", stroke: "rgb(235, 133, 37)", width: 1.5, scale: "y2" },
-        { label: "30d", stroke: "rgba(168, 85, 247, 0.5)", width: 2, scale: "y3" },
-      ],
+      axes: getCompareChartAxes(),
+      series: getCompareChartSeries(),
       legend: { show: false },
       hooks: {
         setCursor: [

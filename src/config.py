@@ -12,6 +12,7 @@ _tool_config = _config["tool"]["config"]
 
 SPYGLASS_HOST = _tool_config["spyglass_host"]
 SPYGLASS_PROJECT = _project_config["name"]
+SERVICE_MONITOR_URL = _tool_config["service_monitor_url"]
 SERVER_URL = _tool_config["server_url"]
 FLASK_PORT = _tool_config["flask_port"]
 MQTT_PORT = _tool_config["mqtt_port"]
@@ -34,6 +35,9 @@ def config_cli(
     flask_port: bool = typer.Option(False, "--flask-port", help=str(FLASK_PORT)),
     mqtt_port: bool = typer.Option(False, "--mqtt-port", help=str(MQTT_PORT)),
     spyglass_host: bool = typer.Option(False, "--spyglass-host", help=SPYGLASS_HOST),
+    service_monitor_url: bool = typer.Option(
+        False, "--service-monitor-url", help=SERVICE_MONITOR_URL
+    ),
     # MQTT settings
     mqtt_topic: bool = typer.Option(False, "--mqtt-topic", help=TOPIC),
     tasmota_ui_url: bool = typer.Option(False, "--tasmota-ui-url", help=TASMOTA_UI_URL),
@@ -60,6 +64,7 @@ def config_cli(
         typer.echo(f"tunnel_name={TUNNEL_NAME}")
         typer.echo(f"domain_suffix={DOMAIN_SUFFIX}")
         typer.echo(f"spyglass_host={SPYGLASS_HOST}")
+        typer.echo(f"service_monitor_url={SERVICE_MONITOR_URL}")
         return
 
     # Map parameters to their actual values
@@ -76,6 +81,7 @@ def config_cli(
         tunnel_name: TUNNEL_NAME,
         domain_suffix: DOMAIN_SUFFIX,
         spyglass_host: SPYGLASS_HOST,
+        service_monitor_url: SERVICE_MONITOR_URL,
     }
 
     for is_set, value in param_map.items():

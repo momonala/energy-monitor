@@ -16,12 +16,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+from src.alerts import send_alert
 from src.config import DATABASE_URL
 from src.helpers import local_timezone
 from src.helpers import timed
 from src.observability import get_logger
 from src.observability import metrics
-from src.telegram import report_missing_data_to_telegram
 
 logger = get_logger(__name__)
 
@@ -181,7 +181,7 @@ def save_energy_reading(tasmota_payload: dict):
                 session.commit()
                 session.refresh(reading)
         metrics.increment("db.readings.saved")
-        logger.info(
+        logger.debug(
             "Saved energy reading: meter_id=%s power=%sW E_in=%s E_out=%s timestamp=%s",
             reading.meter_id,
             reading.power_watts,
@@ -260,7 +260,7 @@ def log_db_health_check():
     metrics.gauge("db.readings.last_hour", num_readings_last_hour)
     if num_readings_last_hour < 300:
         metrics.increment("db.health.low_readings")
-        report_missing_data_to_telegram(f"Only {num_readings_last_hour} readings in the last hour")
+        send_alert(f"Only {num_readings_last_hour} readings in the last hour")
     num_total_readings = num_total_energy_readings()
     metrics.gauge("db.readings.total", num_total_readings)
     logger.info(f"{num_readings_last_hour=} {num_total_readings=}")

@@ -1,10 +1,15 @@
 (() => {
-  const { fetchJson } = window.EnergyMonitor;
+  const {
+    fetchJson,
+    setConnectionStatus,
+    getDesktopChartAxes,
+    getDesktopChartSeries,
+    getChartSelectOptions,
+  } = window.EnergyMonitor;
 
   const chartEl = document.getElementById("chart");
   const chartLoading = document.getElementById("chart-loading");
   const statusConn = document.getElementById("status-connection");
-  const statusPts = document.getElementById("status-points");
   const statusLast = document.getElementById("status-last");
   const statEnergy = document.getElementById("stat-energy");
   const statAvg = document.getElementById("stat-avg");
@@ -56,7 +61,6 @@
     statMonthAvgEnergy, statMonthAvgCost, statWeekAvgEnergy, statWeekAvgCost,
     statDayAvgEnergy, statDayAvgCost
   ].filter(Boolean);
-  const statusLive = document.getElementById("status-live");
 
   let u = null;
   let xVals = [];
@@ -97,7 +101,6 @@
   const EMA_ALPHA = 0.0001;            // ≈ 2-day smoothing at 10s sample rate
 
   let lastDataTimestamp = null;
-  let isLiveView = true;
   let pollController = null;
   let chartLookbackMs = DEFAULT_CHART_LOOKBACK_MS;
 
@@ -168,42 +171,8 @@
     },
   };
 
-  const logoGlow = document.querySelector(".logo-glow");
-
   function setConnection(ok) {
-    statusConn.textContent = ok ? "Connected" : "Offline";
-    statusConn.style.borderColor = ok ? "rgba(34,197,94,0.6)" : "rgba(239,68,68,0.6)";
-    statusConn.style.color = ok ? "#00c83f" : "#7f1d1d";
-    if (logoGlow) logoGlow.classList.toggle("logo-glow--offline", !ok);
-  }
-
-  /**
-   * Flash the connection indicator to show new data arrived
-   */
-  function flashLiveIndicator() {
-    if (!statusConn) return;
-    statusConn.classList.add("live");
-    setTimeout(() => statusConn.classList.remove("live"), 1000);
-  }
-
-  /**
-   * Update the live view indicator based on whether the chart's right edge
-   * is near the latest data point (within 2 minutes)
-   */
-  function updateLiveIndicator() {
-    if (!statusLive || !u || !xVals.length) return;
-    const curX = u.scales && u.scales.x ? u.scales.x : null;
-    const curMax = curX && Number.isFinite(curX.max) ? curX.max : null;
-    const latestDataSec = xVals[xVals.length - 1];
-    
-    // Consider "live" if view's right edge is within threshold of latest data
-    isLiveView = curMax !== null && (curMax >= latestDataSec - LIVE_THRESHOLD_SEC);
-    
-    if (isLiveView) {
-      statusLive.classList.remove("hidden");
-    } else {
-      statusLive.classList.add("hidden");
-    }
+    setConnectionStatus(statusConn, ok);
   }
 
   /**
@@ -228,86 +197,17 @@
       height,
       scales: {
         x: { time: true },
-        y: { 
-          auto: powerScaleMode === 'auto',
-          range: powerScaleMode === 'fixed' ? [0, 2000] : undefined
-        },     // power (W)
-        y2: { auto: true },    // cumulative energy (kWh)
-        y3: { auto: true },    // daily energy (kWh)
+        y: {
+          auto: powerScaleMode === "auto",
+          range: powerScaleMode === "fixed" ? [0, 2000] : undefined,
+        },
+        y2: { auto: true },
+        y3: { auto: true },
       },
-      axes: [
-        {
-          stroke: "#a3a3a3",
-          grid: { stroke: "rgba(255,255,255,0.06)" },
-          ticks: { stroke: "rgba(255,255,255,0.12)" },
-          size: 56,
-        },
-        {
-          label: "Watts",
-          stroke: "#a3a3a3",
-          grid: { show: false },
-          size: 56,
-        },
-        {
-          side: 1,
-          label: "Total kWh",
-          stroke: "rgb(235, 133, 37)",
-          grid: { show: false },
-          scale: "y2",
-          size: 56,
-        },
-        {
-          side: 1,
-          label: "Daily kWh",
-          stroke: "rgb(255, 220, 50)",
-          grid: { show: false },
-          scale: "y3",
-          size: 56,
-        }
-      ],
-      series: [
-        {},
-        {
-          label: "Live Power",
-          stroke: "rgba(37, 99, 235, 1)",
-          fill: "rgba(37,99,235,0.12)",
-          width: 1.5,
-          scale: "y",
-        },
-        {
-          label: "Daily Usage",
-          stroke: "rgb(255, 220, 50)",
-          width: 2,
-          scale: "y3",
-        },
-        {
-          label: "Avg Power",
-          stroke: "rgb(96, 165, 250)",
-          width: 1.5,
-          scale: "y",
-        },
-        {
-          label: "Meter Reading",
-          stroke: "rgb(235, 133, 37)",
-          width: 1.5,
-          scale: "y2",
-        },
-        {
-          label: "30d Avg Daily Usage",
-          stroke: "rgba(168, 85, 247, 0.5)",
-          width: 2,
-          scale: "y3",
-        },
-      ],
+      axes: getDesktopChartAxes(),
+      series: getDesktopChartSeries(),
       legend: { show: false, live: false },
-      select: {
-        show: true,
-        over: true,
-        x: true,
-        y: false,
-        fill: "rgba(96,165,250,0.15)",
-        stroke: "#60a5fa",
-      },
+      select: getChartSelectOptions(),
       hooks: {
         setSelect: [
           (uInst) => {
@@ -401,7 +301,6 @@
     }
     renderSelection();
     computeStatsLocal(startMs, endMs);
-    updateLiveIndicator();
   }
 
   function clearSelection() {
@@ -414,7 +313,6 @@
     if (statCount) statCount.textContent = "–";
     renderSelection();
     clearPointerSelectionOverlay();
-    updateLiveIndicator();
   }
 
   /**
@@ -591,18 +489,13 @@
       }
     }
     
-    if (statusPts) statusPts.textContent = `${xVals.length} data points`;
-    // header extras
     const lastIdx = xVals.length - 1;
     if (statusLast && lastIdx >= 0) {
-      statusLast.textContent = `Last updated: ${fmt.t(xVals[lastIdx] * 1000)}`;
+      statusLast.textContent = fmt.t(xVals[lastIdx] * 1000);
     }
     if (selection.start && selection.end) {
       computeStatsLocal(selection.start, selection.end);
     }
-    
-    // Update live view indicator
-    updateLiveIndicator();
   }
 
   async function fetchReadings({ start = null, end = null, incremental = false, signal = null } = {}) {
@@ -683,9 +576,6 @@
           yVals = yVals.concat(newYVals.slice(appendIndex));
           eVals = eVals.concat(newEVals.slice(appendIndex));
           trimToChartWindow();
-
-          // Flash the connection indicator to show new data arrived
-          flashLiveIndicator();
         }
       } else {
         // Full replacement (initial load or explicit refresh)

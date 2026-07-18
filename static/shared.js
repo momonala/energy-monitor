@@ -1,22 +1,37 @@
 /**
  * Energy Monitor - Shared Utilities
- * Common code used by both desktop (app.js) and mobile (mobile.js) interfaces.
+ * Common code used by desktop, mobile, and compare interfaces.
  */
 
 // =============================================================================
-// Chart Colors (Design Tokens)
+// Design tokens bridge (CSS custom properties → JS)
 // =============================================================================
-const ChartColors = {
-  power: "rgba(37, 99, 235, 1)",
-  powerFill: "rgba(37,99,235,0.12)",
-  energy: "rgb(235, 133, 37)",
-  dailyEnergy: "rgb(255, 220, 50)",
-  typicalDaily: "rgba(168, 85, 247, 0.7)",
-  rollingAvg: "rgb(96, 165, 250)",
-  axis: "#a3a3a3",
-  grid: "rgba(255,255,255,0.06)",
-  ticks: "rgba(255,255,255,0.12)",
-};
+
+/** Read a CSS custom property from :root. */
+function getCssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+/** Chart and UI colors sourced from tokens.css — single source of truth. */
+function readChartTheme() {
+  return {
+    power: getCssVar("--series-power"),
+    powerFill: getCssVar("--series-power-fill"),
+    energy: getCssVar("--series-energy"),
+    dailyEnergy: getCssVar("--series-daily"),
+    typicalDaily: getCssVar("--series-typical"),
+    rollingAvg: getCssVar("--series-rolling"),
+    axis: getCssVar("--series-axis"),
+    grid: getCssVar("--series-grid"),
+    ticks: getCssVar("--series-ticks"),
+    selectFill: getCssVar("--series-select-fill"),
+    selectStroke: getCssVar("--series-select-stroke"),
+    accent: getCssVar("--accent"),
+    fontSans: getCssVar("--font-sans") || '"Inter", system-ui, sans-serif',
+  };
+}
+
+const ChartColors = readChartTheme();
 
 // =============================================================================
 // Formatting Helpers
@@ -101,9 +116,14 @@ async function fetchJson(url, options = {}) {
  */
 function setConnectionStatus(statusEl, ok) {
   if (!statusEl) return;
-  statusEl.textContent = ok ? "Connected" : "Offline";
-  statusEl.style.borderColor = ok ? "rgba(34,197,94,0.6)" : "rgba(239,68,68,0.6)";
-  statusEl.style.color = ok ? "#00c83f" : "#7f1d1d";
+  const label = statusEl.querySelector(".header-status__label");
+  if (label) {
+    label.textContent = ok ? "Connected" : "Offline";
+  } else {
+    statusEl.textContent = ok ? "Connected" : "Offline";
+  }
+  statusEl.classList.remove("header-status--connected", "header-status--offline", "header-status--pending");
+  statusEl.classList.add(ok ? "header-status--connected" : "header-status--offline");
 }
 
 // =============================================================================
@@ -284,24 +304,21 @@ function getBaseChartSeries() {
 /**
  * Get base chart axes configurations.
  * @param {Object} opts - Options for axis sizing
- * @param {number} opts.xSize - X-axis size
- * @param {number} opts.ySize - Y-axis size
- * @param {string} opts.font - Font for axis labels
- * @param {boolean} opts.hideYLabels - If true, omit y-axis labels and tick values (e.g. for mobile)
  */
 function getBaseChartAxes(opts = {}) {
-  const { xSize = 56, ySize = 56, font = "10px sans-serif", hideYLabels = false } = opts;
+  const theme = readChartTheme();
+  const { xSize = 56, ySize = 56, font = `11px ${theme.fontSans}`, hideYLabels = false } = opts;
   return [
     {
-      stroke: ChartColors.axis,
-      grid: { stroke: ChartColors.grid },
-      ticks: { stroke: ChartColors.ticks },
+      stroke: theme.axis,
+      grid: { stroke: theme.grid },
+      ticks: { stroke: theme.ticks },
       size: xSize,
       font,
     },
     {
       label: "W",
-      stroke: ChartColors.axis,
+      stroke: theme.axis,
       grid: { show: false },
       size: ySize,
       font,
@@ -310,7 +327,7 @@ function getBaseChartAxes(opts = {}) {
     {
       side: 1,
       label: "kWh",
-      stroke: ChartColors.energy,
+      stroke: theme.energy,
       grid: { show: false },
       scale: "y2",
       size: ySize,
@@ -320,7 +337,7 @@ function getBaseChartAxes(opts = {}) {
     {
       side: 1,
       label: "Daily",
-      stroke: ChartColors.dailyEnergy,
+      stroke: theme.dailyEnergy,
       grid: { show: false },
       scale: "y3",
       size: ySize,
@@ -328,6 +345,132 @@ function getBaseChartAxes(opts = {}) {
       ...(hideYLabels ? { label: "", values: () => [] } : {}),
     },
   ];
+}
+
+/**
+ * Full desktop chart axes (labels + themed strokes).
+ */
+function getDesktopChartAxes() {
+  const theme = readChartTheme();
+  const font = `11px ${theme.fontSans}`;
+  return [
+    {
+      stroke: theme.axis,
+      grid: { stroke: theme.grid },
+      ticks: { stroke: theme.ticks },
+      size: 56,
+      font,
+    },
+    {
+      label: "Watts",
+      stroke: theme.axis,
+      grid: { show: false },
+      size: 56,
+      font,
+    },
+    {
+      side: 1,
+      label: "Total kWh",
+      stroke: theme.energy,
+      grid: { show: false },
+      scale: "y2",
+      size: 56,
+      font,
+    },
+    {
+      side: 1,
+      label: "Daily kWh",
+      stroke: theme.dailyEnergy,
+      grid: { show: false },
+      scale: "y3",
+      size: 56,
+      font,
+    },
+  ];
+}
+
+/**
+ * Desktop chart series definitions aligned with tokens.
+ */
+function getDesktopChartSeries() {
+  const theme = readChartTheme();
+  return [
+    {},
+    {
+      label: "Live Power",
+      stroke: theme.power,
+      fill: theme.powerFill,
+      width: 1.5,
+      scale: "y",
+    },
+    {
+      label: "Daily Usage",
+      stroke: theme.dailyEnergy,
+      width: 2,
+      scale: "y3",
+    },
+    {
+      label: "Avg Power",
+      stroke: theme.rollingAvg,
+      width: 1.5,
+      scale: "y",
+    },
+    {
+      label: "Meter Reading",
+      stroke: theme.energy,
+      width: 1.5,
+      scale: "y2",
+    },
+    {
+      label: "30d Avg Daily Usage",
+      stroke: theme.typicalDaily,
+      width: 2,
+      scale: "y3",
+    },
+  ];
+}
+
+/** Compact chart axes for compare page side-by-side charts. */
+function getCompareChartAxes() {
+  const theme = readChartTheme();
+  const font = `11px ${theme.fontSans}`;
+  return [
+    {
+      stroke: theme.axis,
+      grid: { stroke: theme.grid },
+      ticks: { stroke: theme.ticks },
+      size: 40,
+      font,
+    },
+    { label: "W", stroke: theme.axis, grid: { show: false }, size: 40, font },
+    { side: 1, label: "kWh", stroke: theme.energy, grid: { show: false }, scale: "y2", size: 40, font },
+    { side: 1, label: "Daily", stroke: theme.dailyEnergy, grid: { show: false }, scale: "y3", size: 40, font },
+  ];
+}
+
+/** Short-label series for compare charts. */
+function getCompareChartSeries() {
+  const theme = readChartTheme();
+  return [
+    {},
+    { label: "Power", stroke: theme.power, fill: theme.powerFill, width: 1.5, scale: "y" },
+    { label: "Daily", stroke: theme.dailyEnergy, width: 2, scale: "y3" },
+    { label: "Avg P", stroke: theme.rollingAvg, width: 1.5, scale: "y" },
+    { label: "Meter", stroke: theme.energy, width: 1.5, scale: "y2" },
+    { label: "30d", stroke: theme.typicalDaily, width: 2, scale: "y3" },
+  ];
+}
+/** uPlot select overlay styling from tokens. */
+function getChartSelectOptions() {
+  const theme = readChartTheme();
+  return {
+    show: true,
+    over: true,
+    x: true,
+    y: false,
+    fill: theme.selectFill,
+    stroke: theme.selectStroke,
+  };
 }
 
 // =============================================================================
@@ -357,6 +500,8 @@ function processReadingsData(rows) {
 // Export to window for use by other scripts
 window.EnergyMonitor = {
   ChartColors,
+  readChartTheme,
+  getCssVar,
   Fmt,
   formatDuration,
   fetchJson,
@@ -368,6 +513,11 @@ window.EnergyMonitor = {
   PRESET_IDS,
   getBaseChartSeries,
   getBaseChartAxes,
+  getDesktopChartAxes,
+  getDesktopChartSeries,
+  getCompareChartAxes,
+  getCompareChartSeries,
+  getChartSelectOptions,
   processReadingsData,
   DEFAULT_COST_PER_KWH,
 };

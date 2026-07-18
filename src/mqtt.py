@@ -9,6 +9,7 @@ import time
 import paho.mqtt.client as mqtt
 
 import src.observability  # noqa: F401
+from src.alerts import send_alert
 from src.config import MQTT_PORT
 from src.config import SERVER_URL
 from src.config import TOPIC
@@ -42,7 +43,6 @@ def db_worker():
         payload, enqueued_at = item
         wait_ms = (time.perf_counter() - enqueued_at) * 1000
         metrics.timing("mqtt.db_queue.wait_ms", wait_ms)
-        logger.info("Saving energy reading to DB (queue wait %.0fms)", wait_ms)
         try:
             save_energy_reading(tasmota_payload=payload)
         except Exception:
@@ -76,6 +76,10 @@ def on_message(client, userdata, msg):
             metrics.increment("mqtt.messages.status")
             if payload == "Offline":
                 metrics.increment("mqtt.device.offline")
+                send_alert("Hardware device went *offline*")
+            elif payload == "Online":
+                metrics.increment("mqtt.device.online")
+                send_alert("Hardware device came *online*")
             logger.info(f"[msg] {msg.topic}: {payload}")
             return
         data = json.loads(payload)
@@ -94,12 +98,12 @@ def on_message(client, userdata, msg):
             summary = format_mt681_summary(mt_payload)
         else:
             summary = f"payload_keys={list(data.keys())}"
-        logger.info("[mqtt] received SENSOR: %s", summary)
+        logger.debug("[mqtt] received SENSOR: %s", summary)
         metrics.increment("mqtt.messages.mqtt_reading")
         metrics.gauge("mqtt.db_queue.depth", db_queue.qsize())
         db_queue.put((data, time.perf_counter()))
     elif msg.topic == STATE_TOPIC:
-        logger.info(f"[msg] {msg.topic}: {data}")
+        logger.debug("[msg] %s: %s", msg.topic, data)
     elif msg.topic == INFO3_TOPIC:
         metrics.increment("mqtt.device.errors")
         logger.warning(f"[msg] {msg.topic}: {data}")

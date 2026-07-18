@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Energy Monitor{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png" />
+  <link rel="shortcut icon" href="/static/favicon.ico" />
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}" data-page="{{ active_page | default('') }}">
+  <video class="bg-video" autoplay loop muted playsinline aria-hidden="true"
+         oncanplay="this.playbackRate=0.5">
+    <source src="/static/abstract-background.webm" type="video/webm" />
+  </video>
+  {% block sidebar %}
+  <nav class="sidebar" id="sidebar" aria-label="Navigation">
+    <div class="sidebar-brand">
+      <a class="sidebar-brand-link" href="/">Energy Monitor</a>
+      <button type="button" class="sidebar-collapse-btn" id="sidebarToggle" aria-label="Toggle sidebar" title="Toggle sidebar"></button>
+    </div>
+    <div class="sidebar-nav">
+      <span class="sidebar-section-label">Views</span>
+      <a class="sidebar-link{% if active_page == 'dashboard' %} is-active{% endif %}" href="/">Dashboard</a>
+      <a class="sidebar-link{% if active_page == 'compare' %} is-active{% endif %}" href="/compare">Compare</a>
+      <a class="sidebar-link{% if active_page == 'mobile' %} is-active{% endif %}" href="/mobile">Mobile</a>
+      <span class="sidebar-section-label">Observability</span>
+      <a class="sidebar-link" href="/observability" target="_blank" rel="noopener noreferrer">Spyglass</a>
+    </div>
+  </nav>
+  {% endblock %}
+
+  {% block header %}
+  <header class="page-header">
+    <div class="header-row">
+      <div>
+        <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+      </div>
+      <div class="header-controls">
+        {% block header_controls %}{% endblock %}
+      </div>
+    </div>
+  </header>
+  {% endblock %}
+
+  {% block main %}
+  <main class="{% block main_class %}dashboard{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+  {% endblock %}
+
+  <script src="/static/shared.js"></script>
+  {% block scripts %}{% endblock %}
+  {% block sidebar_script %}
+  <script>
+    (function () {
+      const toggle = document.getElementById("sidebarToggle");
+      if (!toggle) return;
+      const COLLAPSED = "sidebar-collapsed";
+      function chevron(collapsed) {
+        return collapsed
+          ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'
+          : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+      }
+      function apply(collapsed) {
+        document.body.classList.toggle(COLLAPSED, collapsed);
+        toggle.innerHTML = chevron(collapsed);
+        toggle.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
+      }
+      apply(localStorage.getItem("sidebarCollapsed") === "1");
+      toggle.addEventListener("click", () => {
+        const next = !document.body.classList.contains(COLLAPSED);
+        localStorage.setItem("sidebarCollapsed", next ? "1" : "0");
+        apply(next);
+      });
+    })();
+  </script>
+  {% endblock %}
+</body>
+</html>

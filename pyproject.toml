@@ -28,6 +28,9 @@ dependencies = [
 # Spyglass observability (local server: uv run spyglass serve)
 spyglass_host = "localhost:5013"
 
+# Service Monitor (Telegram alerts via POST /api/alert)
+service_monitor_url = "http://localhost:5001"
+
 # Server settings
 server_url = "localhost"
 flask_port = 5008

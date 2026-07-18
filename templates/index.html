@@ -1,230 +1,212 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Energy Monitor</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
-    <link rel="shortcut icon" href="/static/favicon.ico">
+{% extends "_base.html" %}
 
-  </head>
-  <body>
-    <header class="app-header">
-      <div class="branding">
-        <div class="logo-glow"></div>
-        <h1>Energy Monitor</h1>
+{% block title %}Dashboard – Energy Monitor{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block header_controls %}
+<span id="status-connection" class="header-status header-status--pending" role="status">
+  <span class="header-status__dot" aria-hidden="true"></span>
+  <span class="header-status__label">Connecting…</span>
+</span>
+<span id="status-last" class="header-updated" aria-live="polite">–</span>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-chart-layout">
+  <section class="chart-card card">
+    <div class="chart-wrapper">
+      <div id="chart"></div>
+      <div id="chart-loading" class="chart-loading">Loading chart…</div>
+      <div id="hover-overlay" class="hover-overlay">
+        <div class="hover-row-new">
+          <span class="hover-label">Time:</span>
+          <span id="hover-time">–</span>
+        </div>
+        <div class="hover-row-new">
+          <span class="hover-label text-energy">Meter Reading (kWh):</span>
+          <span id="hover-total-energy">–</span>
+        </div>
+        <div class="hover-row-new">
+          <span class="hover-label text-daily-energy">Daily Usage (kWh):</span>
+          <span id="hover-daily-energy">–</span>
+        </div>
+        <div class="hover-row-new">
+          <span id="hover-typical-label" class="hover-label text-avg">30d Avg Daily Usage (kWh):</span>
+          <span id="hover-typical-daily-energy">–</span>
+        </div>
+        <div class="hover-row-new">
+          <span class="hover-label text-power">Live Power (W):</span>
+          <span id="hover-power">–</span>
+        </div>
+        <div class="hover-row-new">
+          <span class="hover-label text-rolling-avg">Avg Power (W):</span>
+          <span id="hover-rolling-avg">–</span>
+        </div>
       </div>
-      <div class="status">
-        <span id="status-connection" class="status-pill">Connecting...</span>
-        <span id="status-live" class="status-pill live-badge hidden">● LIVE</span>
-        <span id="status-points" class="status-pill">0 data points</span>
-        <span id="status-last" class="status-pill">Last updated –</span>
-        <a href="/compare" class="status-pill" title="Compare periods">Compare</a>
-        <a href="/mobile" class="status-pill" title="Mobile View">Mobile</a>
+    </div>
+    <div class="toolbar">
+      <div class="toolbar-row view-toggle" role="group" aria-label="Chart series">
+        <button id="btn-toggle-power" class="btn btn-trace btn-trace-power" data-series="1" aria-pressed="true">Live Power</button>
+        <button id="btn-toggle-daily" class="btn btn-trace btn-trace-daily" data-series="2" aria-pressed="true">Daily Usage</button>
+        <button id="btn-toggle-avg-power" class="btn btn-trace btn-trace-avg-power" data-series="3" aria-pressed="true">Avg Power</button>
+        <button id="btn-toggle-meter" class="btn btn-trace btn-trace-meter" data-series="4" aria-pressed="true">Meter Reading</button>
+        <button id="btn-toggle-typical" class="btn btn-trace btn-trace-typical" data-series="5" aria-pressed="true">30d Avg</button>
       </div>
-    </header>
-
-    <main class="app-main">
-      <div class="chart-layout">
-        <section class="chart-card card">
-          <div class="chart-wrapper">
-            <div id="chart"></div>
-            <div id="chart-loading" class="chart-loading">Loading chart...</div>
-            <div id="hover-overlay" class="hover-overlay">
-              <div class="hover-row-new">
-                <span class="hover-label">Time:</span>
-                <span id="hover-time">–</span>
-              </div>
-              <div class="hover-row-new">
-                <span class="hover-label text-energy">Meter Reading (kWh):</span>
-                <span id="hover-total-energy">–</span>
-              </div>
-              <div class="hover-row-new">
-                <span class="hover-label text-daily-energy">Daily Usage (kWh):</span>
-                <span id="hover-daily-energy">–</span>
-              </div>
-              <div class="hover-row-new">
-                <span id="hover-typical-label" class="hover-label text-avg">30d Avg Daily Usage (kWh):</span>
-                <span id="hover-typical-daily-energy">–</span>
-              </div>
-              <div class="hover-row-new">
-                <span class="hover-label text-power">Live Power (W):</span>
-                <span id="hover-power">–</span>
-              </div>
-              <div class="hover-row-new">
-                <span class="hover-label text-rolling-avg">Avg Power (W):</span>
-                <span id="hover-rolling-avg">–</span>
-              </div>
-            </div>
-          </div>
-          <div class="toolbar">
-            <div class="toolbar-row">
-              <button id="btn-toggle-power" class="btn btn-trace btn-trace-power" data-series="1" aria-pressed="true">Live Power</button>
-              <button id="btn-toggle-daily" class="btn btn-trace btn-trace-daily" data-series="2" aria-pressed="true">Daily Usage</button>
-              <button id="btn-toggle-avg-power" class="btn btn-trace btn-trace-avg-power" data-series="3" aria-pressed="true">Avg Power</button>
-              <button id="btn-toggle-meter" class="btn btn-trace btn-trace-meter" data-series="4" aria-pressed="true">Meter Reading</button>
-              <button id="btn-toggle-typical" class="btn btn-trace btn-trace-typical" data-series="5" aria-pressed="true">30d Avg</button>
-            </div>
-            <div class="toolbar-row">
-              <button id="btn-refresh" class="btn">Refresh</button>
-              <button id="btn-reset" class="btn">Reset</button>
-              <button id="btn-toggle-scale" class="btn" title="Toggle power axis scale">Auto</button>
-              <button id="btn-toggle-avg-mode" class="btn" title="Toggle between 30d moving average and total average">30d</button>
-              <select id="time-range-select" class="btn">
-                <option value="">Range</option>
-                <option value="hour">Hour</option>
-                <option value="day">Day</option>
-                <option value="week">Week</option>
-                <option value="month">Month</option>
-                <option value="year">Year</option>
-              </select>
-            </div>
-          </div>
-        </section>
-
-        <aside class="stats-card card">
-          <div class="stats-title">Selection Stats</div>
-          <div class="stats-grid">
-            <div class="stat">
-              <div class="label">Cost €/kWh</div>
-              <div class="value">
-                <input id="cost-input" type="text" value="0.3102" />
-              </div>
-            </div>
-            <div class="stat period-stat">
-              <div class="label">Energy & Cost</div>
-              <div class="value">
-                <div class="period-row period-header">
-                  <span class="period-label"></span>
-                  <span class="text-energy">Real</span>
-                  <span class="text-avg">Typical</span>
-                </div>
-                <div class="period-row">
-                  <span class="period-label text-energy">kWh</span>
-                  <span class="text-energy"><span id="stat-energy">–</span></span>
-                  <span class="text-avg"><span id="stat-avg-energy">–</span></span>
-                </div>
-                <div class="period-row">
-                  <span class="period-label">€</span>
-                  <span><span id="stat-cost-range">–</span></span>
-                  <span class="text-avg-light"><span id="stat-avg-cost">–</span></span>
-                </div>
-              </div>
-            </div>
-            <div class="stat period-stat">
-              <div class="label">Power Stats</div>
-              <div class="value">
-                <div class="period-row">
-                  <span class="period-label text-power">Max (W)</span>
-                  <span class="text-power"><span id="stat-max">–</span></span>
-                </div>
-                <div class="period-row">
-                  <span class="period-label text-power">Avg (W)</span>
-                  <span class="text-power"><span id="stat-avg">–</span></span>
-                </div>
-                <div class="period-row">
-                  <span class="period-label text-power">Min (W)</span>
-                  <span class="text-power"><span id="stat-min">–</span></span>
-                </div>
-              </div>
-            </div>
-            <div class="stat">
-              <div class="label">Data Points</div>
-              <div class="value"><span id="stat-count">–</span></div>
-            </div>
-            <div class="stat">
-              <div class="label">Range</div>
-              <div class="value"><span id="stat-range">–</span></div>
-            </div>
-          </div>
-        </aside>
-
-        <aside class="stats-card card">
-          <div class="stats-title">Period Summary</div>
-          <div class="stats-grid">
-            <div class="stat period-stat">
-              <div class="label">Total</div>
-              <div class="value">
-                <div class="period-row">
-                  <span class="period-label text-energy">kWh</span>
-                  <span class="text-energy"><span id="stat-current-consumption">–</span></span>
-                </div>
-                <div class="period-row">
-                  <span class="period-label">€</span>
-                  <span><span id="stat-total-cost">–</span></span>
-                </div>
-              </div>
-            </div>
-            <div class="stat period-stat">
-              <div class="label">Last 30 Days</div>
-              <div class="value">
-                <div class="period-row period-header">
-                  <span class="period-label"></span>
-                  <span class="text-energy">Real</span>
-                  <span class="text-avg">Typical</span>
-                </div>
-                <div class="period-row">
-                  <span class="period-label text-energy">kWh</span>
-                  <span class="text-energy"><span id="stat-month-energy">–</span></span>
-                  <span class="text-avg"><span id="stat-month-avg-energy">–</span></span>
-                </div>
-                <div class="period-row">
-                  <span class="period-label">€</span>
-                  <span><span id="stat-month-cost">–</span></span>
-                  <span class="text-avg-light"><span id="stat-month-avg-cost">–</span></span>
-                </div>
-              </div>
-            </div>
-            <div class="stat period-stat">
-              <div class="label">Last 7 Days</div>
-              <div class="value">
-                <div class="period-row period-header">
-                  <span class="period-label"></span>
-                  <span class="text-energy">Real</span>
-                  <span class="text-avg">Typical</span>
-                </div>
-                <div class="period-row">
-                  <span class="period-label text-energy">kWh</span>
-                  <span class="text-energy"><span id="stat-week-energy">–</span></span>
-                  <span class="text-avg"><span id="stat-week-avg-energy">–</span></span>
-                </div>
-                <div class="period-row">
-                  <span class="period-label">€</span>
-                  <span><span id="stat-week-cost">–</span></span>
-                  <span class="text-avg-light"><span id="stat-week-avg-cost">–</span></span>
-                </div>
-              </div>
-            </div>
-            <div class="stat period-stat">
-              <div class="label">Last Day</div>
-              <div class="value">
-                <div class="period-row period-header">
-                  <span class="period-label"></span>
-                  <span class="text-energy">Real</span>
-                  <span class="text-avg">Typical</span>
-                </div>
-                <div class="period-row">
-                  <span class="period-label text-energy">kWh</span>
-                  <span class="text-energy"><span id="stat-day-energy">–</span></span>
-                  <span class="text-avg"><span id="stat-day-avg-energy">–</span></span>
-                </div>
-                <div class="period-row">
-                  <span class="period-label">€</span>
-                  <span><span id="stat-day-cost">–</span></span>
-                  <span class="text-avg-light"><span id="stat-day-avg-cost">–</span></span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </aside>
+      <div class="toolbar-row">
+        <button id="btn-refresh" type="button" class="btn">Refresh</button>
+        <button id="btn-reset" type="button" class="btn">Reset</button>
+        <button id="btn-toggle-scale" type="button" class="btn" title="Toggle power axis scale">Auto</button>
+        <button id="btn-toggle-avg-mode" type="button" class="btn" title="Toggle between 30d moving average and total average">30d</button>
+        <select id="time-range-select" class="btn control-select" aria-label="Time range">
+          <option value="">Range</option>
+          <option value="hour">Hour</option>
+          <option value="day">Day</option>
+          <option value="week">Week</option>
+          <option value="month">Month</option>
+          <option value="year">Year</option>
+        </select>
       </div>
-    </main>
+    </div>
+  </section>
 
-    <script src="/static/shared.js"></script>
-    <script src="/static/app.js"></script>
-  </body>
-</html>
+  <aside class="stats-card card">
+    <div class="stats-title">Selection Stats</div>
+    <div class="stats-grid">
+      <div class="stat">
+        <div class="label">Cost €/kWh</div>
+        <div class="value">
+          <input id="cost-input" class="control-input" type="text" value="0.3102" />
+        </div>
+      </div>
+      <div class="stat period-stat">
+        <div class="label">Energy &amp; Cost</div>
+        <div class="value">
+          <div class="period-row period-header">
+            <span class="period-label"></span>
+            <span class="text-energy">Real</span>
+            <span class="text-avg">Typical</span>
+          </div>
+          <div class="period-row">
+            <span class="period-label text-energy">kWh</span>
+            <span class="text-energy"><span id="stat-energy">–</span></span>
+            <span class="text-avg"><span id="stat-avg-energy">–</span></span>
+          </div>
+          <div class="period-row">
+            <span class="period-label">€</span>
+            <span><span id="stat-cost-range">–</span></span>
+            <span class="text-avg-light"><span id="stat-avg-cost">–</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="stat period-stat">
+        <div class="label">Power Stats</div>
+        <div class="value">
+          <div class="period-row">
+            <span class="period-label text-power">Max (W)</span>
+            <span class="text-power"><span id="stat-max">–</span></span>
+          </div>
+          <div class="period-row">
+            <span class="period-label text-power">Avg (W)</span>
+            <span class="text-power"><span id="stat-avg">–</span></span>
+          </div>
+          <div class="period-row">
+            <span class="period-label text-power">Min (W)</span>
+            <span class="text-power"><span id="stat-min">–</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="label">Data Points</div>
+        <div class="value"><span id="stat-count">–</span></div>
+      </div>
+      <div class="stat">
+        <div class="label">Range</div>
+        <div class="value"><span id="stat-range">–</span></div>
+      </div>
+    </div>
+  </aside>
+
+  <aside class="stats-card card">
+    <div class="stats-title">Period Summary</div>
+    <div class="stats-grid">
+      <div class="stat period-stat">
+        <div class="label">Total</div>
+        <div class="value">
+          <div class="period-row">
+            <span class="period-label text-energy">kWh</span>
+            <span class="text-energy"><span id="stat-current-consumption">–</span></span>
+          </div>
+          <div class="period-row">
+            <span class="period-label">€</span>
+            <span><span id="stat-total-cost">–</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="stat period-stat">
+        <div class="label">Last 30 Days</div>
+        <div class="value">
+          <div class="period-row period-header">
+            <span class="period-label"></span>
+            <span class="text-energy">Real</span>
+            <span class="text-avg">Typical</span>
+          </div>
+          <div class="period-row">
+            <span class="period-label text-energy">kWh</span>
+            <span class="text-energy"><span id="stat-month-energy">–</span></span>
+            <span class="text-avg"><span id="stat-month-avg-energy">–</span></span>
+          </div>
+          <div class="period-row">
+            <span class="period-label">€</span>
+            <span><span id="stat-month-cost">–</span></span>
+            <span class="text-avg-light"><span id="stat-month-avg-cost">–</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="stat period-stat">
+        <div class="label">Last 7 Days</div>
+        <div class="value">
+          <div class="period-row period-header">
+            <span class="period-label"></span>
+            <span class="text-energy">Real</span>
+            <span class="text-avg">Typical</span>
+          </div>
+          <div class="period-row">
+            <span class="period-label text-energy">kWh</span>
+            <span class="text-energy"><span id="stat-week-energy">–</span></span>
+            <span class="text-avg"><span id="stat-week-avg-energy">–</span></span>
+          </div>
+          <div class="period-row">
+            <span class="period-label">€</span>
+            <span><span id="stat-week-cost">–</span></span>
+            <span class="text-avg-light"><span id="stat-week-avg-cost">–</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="stat period-stat">
+        <div class="label">Last Day</div>
+        <div class="value">
+          <div class="period-row period-header">
+            <span class="period-label"></span>
+            <span class="text-energy">Real</span>
+            <span class="text-avg">Typical</span>
+          </div>
+          <div class="period-row">
+            <span class="period-label text-energy">kWh</span>
+            <span class="text-energy"><span id="stat-day-energy">–</span></span>
+            <span class="text-avg"><span id="stat-day-avg-energy">–</span></span>
+          </div>
+          <div class="period-row">
+            <span class="period-label">€</span>
+            <span><span id="stat-day-cost">–</span></span>
+            <span class="text-avg-light"><span id="stat-day-avg-cost">–</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/app.js"></script>
+{% endblock %}

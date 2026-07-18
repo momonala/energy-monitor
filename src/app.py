@@ -47,6 +47,18 @@ app = Flask(
 Compress(app)  # Enable gzip compression for responses > 500 bytes
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
+_NAV_ACTIVE_BY_ENDPOINT = {
+    "index": "dashboard",
+    "compare": "compare",
+    "mobile": "mobile",
+}
+
+
+@app.context_processor
+def inject_nav_context():
+    """Expose active sidebar page id to templates."""
+    return {"active_page": _NAV_ACTIVE_BY_ENDPOINT.get(request.endpoint or "", "")}
+
 
 @app.before_request
 def _spyglass_request_start():

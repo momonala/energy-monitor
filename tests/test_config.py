@@ -24,6 +24,7 @@ runner = CliRunner()
         ("--database-url", "sqlite:///data/energy.db"),
         ("--tunnel-name", "raspberrypi-tunnel"),
         ("--domain-suffix", "mnalavadi.org"),
+        ("--service-monitor-url", "http://localhost:5001"),
     ],
 )
 def test_config_returns_single_value(flag: str, expected_output: str):
@@ -47,6 +48,7 @@ def test_config_all_returns_all_values():
     assert "database_url=sqlite:///data/energy.db" in result.stdout
     assert "tunnel_name=raspberrypi-tunnel" in result.stdout
     assert "domain_suffix=mnalavadi.org" in result.stdout
+    assert "service_monitor_url=http://localhost:5001" in result.stdout
 
 
 def test_config_without_flag_fails():

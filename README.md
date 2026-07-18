@@ -38,6 +38,7 @@ flowchart LR
 - uv (Python package manager)
 - MQTT broker (e.g., Mosquitto) running on the network
 - Tasmota device configured to publish to `tele/tasmota/#`
+- [Service Monitor](https://github.com/momonala/service-monitor) on `:5001` for Telegram alerts (optional; alert failures are logged and ignored)
 
 ## Installation
 
@@ -53,12 +54,7 @@ flowchart LR
    uv run python -m src.database
   ```
 3. Configure `pyproject.toml`:
-  Edit the `[tool.config]` section with your settings:
-4. Configure `src/values.py`:
-  ```python
-   TELEGRAM_API_TOKEN
-   TELEGRAM_CHAT_ID
-  ```
+  Edit the `[tool.config]` section with your settings (MQTT, ports, `service_monitor_url`, etc.).
 
 ## Running
 
@@ -101,7 +97,7 @@ curl "http://localhost:5013/logs?project=energy-monitor&level=INFO"
 
 - Data refreshes every 10 seconds via incremental polling
 - Only new data points are fetched and appended to the chart
-- Visual flash indicator when new data arrives
+- Connection status and last-updated timestamp in the header; data point count in the stats panel
 - Auto-expands view if watching near real-time (within 2 minutes of latest data)
 
 
@@ -121,15 +117,23 @@ energy-monitor/
 │   ├── git_tool.py     # Auto-commit DB changes to git
 │   ├── helpers.py      # Time parsing utilities
 │   ├── config.py       # Configuration constants
-│   └── values.py       # Secret values (Telegram tokens)
+│   └── alerts.py       # Telegram alerts via Service Monitor API
 ├── templates/
-│   ├── index.html      # Desktop dashboard HTML
-│   └── mobile.html     # Mobile dashboard HTML
+│   ├── _base.html      # Shared shell (sidebar, header, Spyglass layout)
+│   ├── index.html      # Desktop dashboard
+│   ├── compare.html    # Period comparison page
+│   └── mobile.html     # Mobile dashboard
 ├── static/
+│   ├── css/
+│   │   ├── tokens.css      # Design tokens (Spyglass-aligned)
+│   │   ├── base.css        # Reset, typography, shell
+│   │   ├── components.css  # Buttons, cards, stats, tables
+│   │   └── dashboard.css   # Page-specific layouts
 │   ├── app.js          # Desktop frontend: charting, interactions, live updates
+│   ├── compare.js      # Compare page frontend
 │   ├── mobile.js       # Mobile frontend: simplified chart, stats, daily table
-│   ├── shared.js       # Shared utilities (formatting, colors, data processing)
-│   └── styles.css      # Styles with CSS custom properties (desktop + mobile)
+│   ├── shared.js       # Shared utilities and CSS→JS theme bridge
+│   └── styles.css      # Stylesheet entry point (@imports layered CSS)
 ├── data/
 │   └── energy.db       # SQLite database
 ├── tests/
@@ -268,10 +272,21 @@ EnergyReading
 The scheduler service runs periodic tasks via the `schedule` library:
 
 
-| Schedule     | Task                                             |
-| ------------ | ------------------------------------------------ |
-| Hourly `:00` | Log DB health check (reading counts)             |
-| Hourly `:00` | Commit DB to git if changed (amend + force push) |
+| Schedule     | Task                                                              |
+| ------------ | ----------------------------------------------------------------- |
+| Hourly `:00` | Log DB health check (reading counts); alert if &lt; 300/hour     |
+| Hourly `:00` | Commit DB to git if changed (amend + force push)                  |
+
+
+### Alerts
+
+Sent as Markdown via Service Monitor `POST /api/alert` (`service_monitor_url` in `[tool.config]`, default `http://localhost:5001`). Failures are logged and never crash the app.
+
+
+| Trigger | Message |
+| ------- | ------- |
+| Tasmota LWT `Offline` / `Online` | Hardware device went offline / came online |
+| Hourly health check | Fewer than 300 readings in the last hour |
 
 
 Run services separately:

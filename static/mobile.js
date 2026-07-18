@@ -6,7 +6,7 @@
 (() => {
   // Import shared utilities
   const { Fmt, formatDuration, fetchJson, setConnectionStatus, alignDailyDataToTimestamps,
-          loadCostPerKwh, getBaseChartAxes, processReadingsData, ChartColors } = window.EnergyMonitor;
+          loadCostPerKwh, getBaseChartAxes, processReadingsData, readChartTheme } = window.EnergyMonitor;
 
   // DOM Elements
   const chartEl = document.getElementById("chart");
@@ -78,7 +78,8 @@
     }
 
     const { width, height } = getChartSize();
-    const axes = getBaseChartAxes({ xSize: 40, ySize: 40, font: "10px sans-serif", hideYLabels: true });
+    const theme = readChartTheme();
+    const axes = getBaseChartAxes({ xSize: 40, ySize: 40, font: `10px ${theme.fontSans}`, hideYLabels: true });
     
     const opts = {
       width,
@@ -94,29 +95,29 @@
         {},
         {
           label: "Power",
-          stroke: ChartColors.power,
-          fill: ChartColors.powerFill,
+          stroke: theme.power,
+          fill: theme.powerFill,
           width: 1,
           scale: "y",
           show: seriesVisibility[1],
         },
         {
           label: "Energy",
-          stroke: ChartColors.energy,
+          stroke: theme.energy,
           width: 1,
           scale: "y2",
           show: seriesVisibility[2],
         },
         {
           label: "Daily Usage",
-          stroke: ChartColors.dailyEnergy,
+          stroke: theme.dailyEnergy,
           width: 2,
           scale: "y3",
           show: seriesVisibility[3],
         },
         {
           label: "30d Avg",
-          stroke: ChartColors.typicalDaily,
+          stroke: theme.typicalDaily,
           width: 2,
           scale: "y3",
           show: seriesVisibility[4],
