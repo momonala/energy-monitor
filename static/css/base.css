@@ -1,0 +1,107 @@
+/* Reset and document defaults */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--label);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  margin-left: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+h1 {
+  font-size: var(--text-title);
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin: 0;
+  color: var(--label);
+}
+
+/* Shared label hierarchy — size/weight/color, never uppercase */
+.section-label {
+  font-size: var(--text-meta);
+  font-weight: 600;
+  color: var(--label-tertiary);
+  margin: 0 0 4px;
+}
+
+.field-label {
+  font-size: var(--text-label);
+  font-weight: 500;
+  color: var(--label-tertiary);
+}
+
+.caption-label {
+  font-size: var(--text-caption);
+  font-weight: 500;
+  color: var(--label-tertiary);
+}
+
+/* Ambient background video (Spyglass-style) */
+.bg-video {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -1;
+  opacity: var(--bg-video-opacity);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-video {
+    display: none;
+  }
+}
+
+body.sidebar-collapsed {
+  margin-left: var(--sidebar-collapsed-width);
+}
+
+body.mobile-body {
+  margin-left: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+@media (max-width: 640px) {
+  body:not(.mobile-body) {
+    margin-left: 0;
+  }
+}

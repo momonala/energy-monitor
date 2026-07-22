@@ -1,0 +1,102 @@
+/* Spyglass-aligned design tokens — Liquid Glass dark theme */
+
+:root {
+  /* Backgrounds */
+  --bg: #16171a;
+  --surface-raised: rgba(255, 255, 255, 0.06);
+  --surface-inset: rgba(0, 0, 0, 0.25);
+  --fill: rgba(255, 255, 255, 0.07);
+
+  /* Borders */
+  --separator: rgba(255, 255, 255, 0.1);
+
+  /* Accent & status */
+  --accent: #0a84ff;
+  --danger: #ff453a;
+  --danger-soft: rgba(255, 69, 58, 0.08);
+  --danger-text: #ff6961;
+  --success: #30d158;
+  --success-soft: rgba(48, 209, 88, 0.12);
+  --warning: #ffd60a;
+  --warning-soft: rgba(255, 214, 10, 0.12);
+
+  /* Text */
+  --label: rgba(255, 255, 255, 0.92);
+  --label-secondary: rgba(255, 255, 255, 0.55);
+  --label-tertiary: rgba(255, 255, 255, 0.3);
+
+  /* Interactive fills */
+  --fill-hover: rgba(255, 255, 255, 0.12);
+  --fill-active: rgba(255, 255, 255, 0.16);
+
+  /* Translucent surfaces */
+  --bg-translucent: rgba(22, 23, 26, 0.5);
+
+  /* Focus ring */
+  --accent-ring-border: rgba(10, 132, 255, 0.7);
+  --accent-ring: rgba(10, 132, 255, 0.18);
+
+  /* Glass system */
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-bg-deep: rgba(0, 0, 0, 0.25);
+  --glass-border: rgba(255, 255, 255, 0.13);
+  --glass-border-inner: rgba(255, 255, 255, 0.07);
+  --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --glass-blur: blur(24px) saturate(180%);
+
+  /* Layout */
+  --sidebar-width: 200px;
+  --sidebar-collapsed-width: 40px;
+  --page-gutter: clamp(1rem, 2.5vw, 2.5rem);
+  --header-height: 52px;
+  --chart-axis-offset: 95px;
+
+  /* Typography */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --text-title: 18px;
+  --text-section: 13px;
+  --text-body: 13px;
+  --text-label: 12px;
+  --text-meta: 11px;
+  --text-caption: 10px;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+
+  /* Shadows */
+  --shadow-card: var(--glass-specular), 0 4px 24px rgba(0, 0, 0, 0.3);
+
+  /* Chart series (semantic — used by uPlot via shared.js) */
+  --series-power: #60a5fa;
+  --series-power-fill: rgba(96, 165, 250, 0.12);
+  --series-energy: #fb923c;
+  --series-daily: #fbbf24;
+  --series-typical: #a78bfa;
+  --series-rolling: #60a5fa;
+  --series-grid: rgba(255, 255, 255, 0.05);
+  --series-axis: rgba(255, 255, 255, 0.55);
+  --series-ticks: rgba(255, 255, 255, 0.12);
+  --series-select-fill: rgba(10, 132, 255, 0.15);
+  --series-select-stroke: #0a84ff;
+
+  --bg-video-opacity: 0.35;
+
+  /* Legacy aliases (chart text utilities) */
+  --color-energy: var(--series-energy);
+  --color-power: var(--series-power);
+  --color-avg: var(--series-typical);
+  --color-avg-light: #c4b5fd;
+  --color-rolling-avg: var(--series-rolling);
+  --color-daily-energy: var(--series-daily);
+}

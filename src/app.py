@@ -18,7 +18,7 @@ import src.observability  # noqa: F401 — configure Spyglass logging before oth
 from src.config import FLASK_PORT
 from src.config import MQTT_PORT
 from src.config import SERVER_URL
-from src.config import SPYGLASS_HOST
+from src.config import SPYGLASS_DASHBOARD_URL
 from src.config import TASMOTA_UI_URL
 from src.config import TOPIC
 from src.database import get_daily_energy_usage
@@ -57,7 +57,10 @@ _NAV_ACTIVE_BY_ENDPOINT = {
 @app.context_processor
 def inject_nav_context():
     """Expose active sidebar page id to templates."""
-    return {"active_page": _NAV_ACTIVE_BY_ENDPOINT.get(request.endpoint or "", "")}
+    return {
+        "active_page": _NAV_ACTIVE_BY_ENDPOINT.get(request.endpoint or "", ""),
+        "spyglass_dashboard_url": SPYGLASS_DASHBOARD_URL,
+    }
 
 
 @app.before_request
@@ -228,7 +231,7 @@ def status():
 @app.get("/observability")
 def observability():
     """Redirect to the Spyglass-hosted observability dashboard."""
-    return redirect(f"http://{SPYGLASS_HOST}/dashboard/energy-monitor")
+    return redirect(SPYGLASS_DASHBOARD_URL)
 
 
 def main():

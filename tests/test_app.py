@@ -1,12 +1,30 @@
 """Tests for Flask API endpoints."""
 
+import re
 from datetime import datetime
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from src.helpers import local_timezone
+
+_STATIC_CSS_IMPORT_RE = re.compile(r'@import\s+url\("(/static/[^"]+)"\)')
+
+
+def test_stylesheet_imports_are_served(client):
+    """Every CSS file imported by styles.css must exist and be served."""
+    styles_path = Path(__file__).resolve().parent.parent / "static" / "styles.css"
+    imported_paths = _STATIC_CSS_IMPORT_RE.findall(styles_path.read_text())
+
+    assert imported_paths, "styles.css should @import layered CSS files"
+
+    for path in imported_paths:
+        response = client.get(path)
+        assert response.status_code == 200, f"missing static asset: {path}"
+        assert response.content_type.startswith("text/css"), path
+        assert response.data.strip(), f"empty stylesheet: {path}"
 
 
 def test_index_serves_static_file(client):

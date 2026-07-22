@@ -11,6 +11,7 @@ _project_config = _config["project"]
 _tool_config = _config["tool"]["config"]
 
 SPYGLASS_HOST = _tool_config["spyglass_host"]
+SPYGLASS_DASHBOARD_URL = _tool_config["spyglass_dashboard_url"]
 SPYGLASS_PROJECT = _project_config["name"]
 SERVICE_MONITOR_URL = _tool_config["service_monitor_url"]
 SERVER_URL = _tool_config["server_url"]
@@ -35,6 +36,9 @@ def config_cli(
     flask_port: bool = typer.Option(False, "--flask-port", help=str(FLASK_PORT)),
     mqtt_port: bool = typer.Option(False, "--mqtt-port", help=str(MQTT_PORT)),
     spyglass_host: bool = typer.Option(False, "--spyglass-host", help=SPYGLASS_HOST),
+    spyglass_dashboard_url: bool = typer.Option(
+        False, "--spyglass-dashboard-url", help=SPYGLASS_DASHBOARD_URL
+    ),
     service_monitor_url: bool = typer.Option(
         False, "--service-monitor-url", help=SERVICE_MONITOR_URL
     ),
@@ -64,6 +68,7 @@ def config_cli(
         typer.echo(f"tunnel_name={TUNNEL_NAME}")
         typer.echo(f"domain_suffix={DOMAIN_SUFFIX}")
         typer.echo(f"spyglass_host={SPYGLASS_HOST}")
+        typer.echo(f"spyglass_dashboard_url={SPYGLASS_DASHBOARD_URL}")
         typer.echo(f"service_monitor_url={SERVICE_MONITOR_URL}")
         return
 
@@ -81,6 +86,7 @@ def config_cli(
         tunnel_name: TUNNEL_NAME,
         domain_suffix: DOMAIN_SUFFIX,
         spyglass_host: SPYGLASS_HOST,
+        spyglass_dashboard_url: SPYGLASS_DASHBOARD_URL,
         service_monitor_url: SERVICE_MONITOR_URL,
     }
 

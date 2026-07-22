@@ -32,7 +32,7 @@
       <a class="sidebar-link{% if active_page == 'compare' %} is-active{% endif %}" href="/compare">Compare</a>
       <a class="sidebar-link{% if active_page == 'mobile' %} is-active{% endif %}" href="/mobile">Mobile</a>
       <span class="sidebar-section-label">Observability</span>
-      <a class="sidebar-link" href="/observability" target="_blank" rel="noopener noreferrer">Spyglass</a>
+      <a class="sidebar-link" href="{{ spyglass_dashboard_url }}" target="_blank" rel="noopener noreferrer">Spyglass</a>
     </div>
   </nav>
   {% endblock %}

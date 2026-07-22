@@ -25,6 +25,10 @@ runner = CliRunner()
         ("--tunnel-name", "raspberrypi-tunnel"),
         ("--domain-suffix", "mnalavadi.org"),
         ("--service-monitor-url", "http://localhost:5001"),
+        (
+            "--spyglass-dashboard-url",
+            "https://spyglass.mnalavadi.org/dashboard/energy-monitor",
+        ),
     ],
 )
 def test_config_returns_single_value(flag: str, expected_output: str):
@@ -49,6 +53,7 @@ def test_config_all_returns_all_values():
     assert "tunnel_name=raspberrypi-tunnel" in result.stdout
     assert "domain_suffix=mnalavadi.org" in result.stdout
     assert "service_monitor_url=http://localhost:5001" in result.stdout
+    assert "spyglass_dashboard_url=https://spyglass.mnalavadi.org/dashboard/energy-monitor" in result.stdout
 
 
 def test_config_without_flag_fails():
