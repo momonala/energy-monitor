@@ -25,6 +25,7 @@ def test_stylesheet_imports_are_served(client):
         assert response.status_code == 200, f"missing static asset: {path}"
         assert response.content_type.startswith("text/css"), path
         assert response.data.strip(), f"empty stylesheet: {path}"
+        response.close()
 
 
 def test_index_serves_static_file(client):
@@ -33,6 +34,7 @@ def test_index_serves_static_file(client):
     assert response.status_code == 200
     assert response.content_type == "text/html; charset=utf-8"
     assert b"<html" in response.data or b"<!DOCTYPE html>" in response.data
+    response.close()
 
 
 @pytest.mark.parametrize(

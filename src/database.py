@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from datetime import datetime
 from datetime import timedelta
 from functools import lru_cache
@@ -24,6 +25,11 @@ from src.observability import get_logger
 from src.observability import metrics
 
 logger = get_logger(__name__)
+
+# Python 3.12 deprecated sqlite3's built-in datetime adapter. Register an explicit
+# one matching SQLAlchemy's SQLite DateTime storage format (naive, space-separated,
+# 6-digit microseconds) so raw-SQL bind params compare correctly against ORM-written rows.
+sqlite3.register_adapter(datetime, lambda dt: dt.replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S.%f"))
 
 
 class NegativeEnergyError(ValueError):

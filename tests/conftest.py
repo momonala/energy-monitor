@@ -1,5 +1,6 @@
 """Shared fixtures for tests."""
 
+import os
 import tempfile
 from datetime import datetime
 from datetime import timedelta
@@ -39,6 +40,9 @@ def test_db():
     yield Session
 
     Base.metadata.drop_all(bind=engine)
+    engine.dispose()
+    os.close(db_fd)
+    os.unlink(db_path)
 
 
 @pytest.fixture
