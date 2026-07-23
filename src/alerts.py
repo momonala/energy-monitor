@@ -11,7 +11,7 @@ from src.observability import metrics
 
 logger = get_logger(__name__)
 
-ALERT_PREFIX = "⚠️⚡️*ENERGY MONITOR:*⚡️⚠️ "
+ALERT_PREFIX = "⚡️*ENERGY MONITOR:*⚡️"
 _ALERT_TIMEOUT_SECONDS = 10
 
 
@@ -34,18 +34,13 @@ def send_alert(message: str) -> None:
                 logger.error("Alert API returned HTTP %s", response.status)
                 return
         metrics.increment("alerts.send.success")
+        logger.info("Alert delivered to Service Monitor: %s", message)
     except urllib.error.HTTPError as exc:
         metrics.increment("alerts.send.errors")
-        logger.error("Alert API returned HTTP %s: %s", exc.code, exc.reason)
+        logger.exception("Alert API returned HTTP %s: %s", exc.code, exc.reason)
     except TimeoutError:
         metrics.increment("alerts.send.errors")
-        logger.error(
-            "Alert API timed out after %ss",
-            _ALERT_TIMEOUT_SECONDS,
-        )
-    except urllib.error.URLError as exc:
+        logger.exception("Alert API timed out after %ss", _ALERT_TIMEOUT_SECONDS)
+    except (urllib.error.URLError, OSError):
         metrics.increment("alerts.send.errors")
-        logger.error("Failed to send alert via Service Monitor: %s", exc)
-    except OSError as exc:
-        metrics.increment("alerts.send.errors")
-        logger.error("Failed to send alert via Service Monitor: %s", exc)
+        logger.exception("Failed to send alert via Service Monitor")

@@ -27,11 +27,42 @@ db_queue = queue.Queue()
 # Global MQTT client for status checks
 _mqtt_client: mqtt.Client | None = None
 _last_sensor_time: float | None = None
+_offline_since: float | None = None
 
 LWT_TOPIC = "tele/tasmota/LWT"
 SENSOR_TOPIC = "tele/tasmota/SENSOR"
 STATE_TOPIC = "tele/tasmota/STATE"
 INFO3_TOPIC = "tele/tasmota/INFO3"
+
+
+def format_downtime(seconds: float) -> str:
+    """Format a duration as DD:HH:MM:SS."""
+    total = int(seconds)
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, secs = divmod(rem, 60)
+    return f"{days:02d}:{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def handle_lwt_status(payload: str) -> None:
+    """Alert on device online/offline transitions, reporting downtime on recovery."""
+    global _offline_since
+    if payload == "Offline":
+        metrics.increment("mqtt.device.offline")
+        _offline_since = time.time()
+        send_alert("Hardware device went *offline*")
+        return
+    if payload == "Online":
+        metrics.increment("mqtt.device.online")
+        if _offline_since is None:
+            send_alert("Hardware device came *online*")
+            return
+        downtime_s = time.time() - _offline_since
+        metrics.timing("mqtt.device.downtime_ms", downtime_s * 1000)
+        downtime = format_downtime(downtime_s)
+        logger.info(f"[recovery] device back online after {downtime} (DD:HH:MM:SS)")
+        send_alert(f"Hardware device came *online* — down for `{downtime}` (DD:HH:MM:SS)")
+        _offline_since = None
 
 
 def db_worker():
@@ -74,12 +105,7 @@ def on_message(client, userdata, msg):
         # handle basic status messages
         if msg.topic == LWT_TOPIC:
             metrics.increment("mqtt.messages.status")
-            if payload == "Offline":
-                metrics.increment("mqtt.device.offline")
-                send_alert("Hardware device went *offline*")
-            elif payload == "Online":
-                metrics.increment("mqtt.device.online")
-                send_alert("Hardware device came *online*")
+            handle_lwt_status(payload)
             logger.info(f"[msg] {msg.topic}: {payload}")
             return
         data = json.loads(payload)

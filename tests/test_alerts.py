@@ -54,7 +54,7 @@ def test_send_alert_logs_http_errors_without_raising():
                 with patch("src.alerts.metrics") as mock_metrics:
                     send_alert("low readings")
 
-    mock_logger.error.assert_called_once()
+    mock_logger.exception.assert_called_once()
     mock_metrics.increment.assert_called_once_with("alerts.send.errors")
 
 
@@ -68,7 +68,7 @@ def test_send_alert_logs_connection_errors_without_raising():
                 with patch("src.alerts.metrics") as mock_metrics:
                     send_alert("low readings")
 
-    mock_logger.error.assert_called_once()
+    mock_logger.exception.assert_called_once()
     mock_metrics.increment.assert_called_once_with("alerts.send.errors")
 
 
@@ -82,5 +82,5 @@ def test_send_alert_logs_timeouts_without_raising():
                 with patch("src.alerts.metrics") as mock_metrics:
                     send_alert("low readings")
 
-    mock_logger.error.assert_called_once()
+    mock_logger.exception.assert_called_once()
     mock_metrics.increment.assert_called_once_with("alerts.send.errors")

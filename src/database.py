@@ -463,7 +463,7 @@ def get_stats(start: datetime, end: datetime) -> dict:
             )
 
     min_power, max_power, avg_power, count = agg
-    logger.debug(f"⚠️ [get_stats] {min_power=} {max_power=} {avg_power=} {count=}")
+    logger.debug(f"[get_stats] {min_power=} {max_power=} {avg_power=} {count=}")
     energy_used = None
     if first_row is not None and last_row is not None:
         if first_row.energy_in_kwh is not None and last_row.energy_in_kwh is not None:

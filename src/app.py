@@ -141,7 +141,7 @@ def energy_summary():
     try:
         avg_daily = get_monthly_avg_daily_usage()
     except ValueError as e:
-        logger.warning(f"⚠️ [energy_summary] Error getting monthly avg daily usage: {e}")
+        logger.warning(f"[energy_summary] Error getting monthly avg daily usage: {e}")
         avg_daily = None
 
     if start is None and end is None:
