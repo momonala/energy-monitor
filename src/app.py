@@ -24,6 +24,7 @@ from src.config import TOPIC
 from src.database import get_daily_energy_usage
 from src.database import get_monthly_avg_daily_usage
 from src.database import get_moving_avg_daily_usage
+from src.database import get_readings_cached
 from src.database import get_readings
 from src.database import get_stats
 from src.database import latest_energy_reading
@@ -199,8 +200,8 @@ def api_stats():
 @app.get("/api/clear_cache")
 def clear_cache():
     """Clear Python LRU cache for get_readings. Visit in browser or call via curl."""
-    cache_info = get_readings.cache_info()
-    get_readings.cache_clear()
+    cache_info = get_readings_cached.cache_info()
+    get_readings_cached.cache_clear()
     logger.info(f"Cleared cache: {cache_info}")
     return jsonify(
         {
@@ -237,7 +238,7 @@ def observability():
 def main():
     logger.info(f"Starting Flask server on http://0.0.0.0:{FLASK_PORT}")
     logger.info(f"Status: {json.dumps(status(), indent=2)}")
-    app.run(host="0.0.0.0", port=FLASK_PORT, debug=True)
+    app.run(host="0.0.0.0", port=FLASK_PORT, debug=False)
 
 
 if __name__ == "__main__":

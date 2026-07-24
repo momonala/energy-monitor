@@ -272,21 +272,30 @@ def log_db_health_check():
     logger.info(f"{num_readings_last_hour=} {num_total_readings=}")
 
 
-@lru_cache(maxsize=1000)
-@timed
 def get_readings(
-    start: datetime | None = datetime.now(local_timezone()) - timedelta(weeks=52),
-    end: datetime | None = datetime.now(local_timezone()),
+    start: datetime | None = None,
+    end: datetime | None = None,
 ) -> list[dict]:
     """
     Fetch readings in 2-min buckets (max per bucket). Optionally filter by time range.
     Returns a list of dicts with timestamp (ms since epoch), power_watts, and energy_in_kwh.
     Aggregation is done in SQL so we never load full raw rows for large ranges.
+
+    Timestamps are rounded down to the minute before hitting the cache: the browser sends
+    ms-precision bounds, so without rounding every request is a unique key and the cache
+    never hits (it only grows). Minute granularity is well below the 2-min SQL bucketing.
     """
     tz = local_timezone()
     start_bound = start.astimezone(tz) if start is not None else datetime.now(tz) - timedelta(weeks=52)
     end_bound = end.astimezone(tz) if end is not None else datetime.now(tz)
+    start_bound = start_bound.replace(second=0, microsecond=0)
+    end_bound = end_bound.replace(second=0, microsecond=0)
+    return get_readings_cached(start_bound, end_bound)
 
+
+@lru_cache(maxsize=1000)
+@timed
+def get_readings_cached(start_bound: datetime, end_bound: datetime) -> list[dict]:
     bucket = func.strftime("%s", EnergyReading.timestamp) / 120
     with metrics.timed("db.get_readings"):
         with SessionLocal() as session:
@@ -307,7 +316,7 @@ def get_readings(
 
     if rows:
         logger.debug(
-            f"[get_readings] Found {len(rows)} 2-min buckets for {start=} {end=}: "
+            f"[get_readings] Found {len(rows)} 2-min buckets for {start_bound=} {end_bound=}: "
             f"oldest {rows[0][0]}, latest {rows[-1][0]}"
         )
     result: list[dict] = []

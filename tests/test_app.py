@@ -135,7 +135,7 @@ def test_api_stats_swaps_inverted_range(client):
 
 def test_clear_cache_returns_previous_stats(client):
     """Cache clear endpoint returns previous cache statistics."""
-    with patch("src.app.get_readings") as mock_readings:
+    with patch("src.app.get_readings_cached") as mock_readings:
         mock_readings.cache_info.return_value = type(
             "CacheInfo", (), {"hits": 10, "misses": 2, "currsize": 5}
         )()
