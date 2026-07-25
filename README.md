@@ -95,15 +95,33 @@ curl "http://localhost:5013/logs?project=energy-monitor&level=INFO"
 
 ### Live Updates
 
+- **Live power readout** ("Current Usage"): current watts in the header (desktop) and a card at the top of
+  `/mobile`. `startLivePower()` in `shared.js` polls `/api/live_power` every 5s via a `setTimeout` chain (so a
+  slow response cannot stack requests), pauses entirely while the tab is hidden, and backs off to 30s on
+  repeated failures. When the feed goes stale the last-known value is dimmed rather than blanked.
+- Both views render the reading's timestamp — clock time for today, full date-time for anything older, since
+  time-only would be misleading on a feed that has been dead for days. A stale feed adds an age suffix
+  (`4m ago`). Desktop puts it inline after the watts; mobile passes `metaHost` so it lands in the card header
+  row next to the "Current Usage" label, leaving the big figure a line of its own.
+- This poller owns the connection indicator on both views. On desktop a chart fetch only writes to it on
+  failure — otherwise two components would race to describe the same backend. The mobile indicator is a bare
+  dot with no text label: `setConnectionStatus()` writes text only when the element contains a
+  `.header-status__label`, so the timestamp is the only place freshness is spelled out there.
 - Data refreshes every 10 seconds via incremental polling
 - Only new data points are fetched and appended to the chart
-- Connection status and last-updated timestamp in the header; data point count in the stats panel
+- Data point count in the stats panel
 - Auto-expands view if watching near real-time (within 2 minutes of latest data)
 
 
 ## Mobile Dashboard
 
 A simplified, mobile-optimized interface is available at `/mobile`. Mobile users (iPhone, Android) are automatically redirected; iPad users see the full desktop dashboard.
+
+`mobile.html` overrides `_base.html`'s `header` block to nothing: with no sidebar and only one page, a title
+bar carries no information, so the connection dot sits on the live card instead. The lookback select and the
+chart disclosure share one bare `.mobile-controls` row (no card chrome) to keep the fold from being three
+stacked boxes before any data. The chart card itself is `.js-chart-content` — `mobile.js` toggles
+`is-visible` on it, so the whole card disappears when the chart is hidden.
 
 ## Project Structure
 
@@ -153,7 +171,8 @@ energy-monitor/
 | `/`                   | GET    | Serve desktop dashboard (redirects mobile to `/mobile`)  |
 | `/mobile`             | GET    | Serve mobile-optimized dashboard                         |
 | `/api/readings`       | GET    | Fetch readings with optional time range                  |
-| `/api/latest_reading` | GET    | Get most recent reading                                  |
+| `/api/latest_reading` | GET    | Get most recent reading (full row)                       |
+| `/api/live_power`     | GET    | Latest instantaneous power draw, for the live readout    |
 | `/api/energy_summary` | GET    | Get avg daily usage, daily usage, and 30d moving average |
 | `/api/stats`          | GET    | Compute statistics for a time range                      |
 | `/status`             | GET    | Service health, connection status, job info              |
@@ -178,6 +197,22 @@ Response:
 - `t`: timestamp (ms since epoch)
 - `p`: power (watts)
 - `e`: cumulative energy (kWh)
+
+### `/api/live_power`
+
+No query params. Deliberately slim — it is polled every 5s by every open dashboard, so it selects only
+`(timestamp, power_watts)` instead of hydrating the full row with its `raw_payload` blob. Never cached.
+
+```json
+{"t": 1701432000000, "w": 512.3, "age_s": 4.2, "stale": false}
+```
+
+- `t`: timestamp of the reading (ms since epoch)
+- `w`: instantaneous power (watts)
+- `age_s`: seconds since the reading landed
+- `stale`: `age_s > 60` — readings normally arrive every ~10s, so a minute of silence means the feed is broken
+
+An empty database returns `200` with `t`/`w`/`age_s` null and `stale: true`, so the client has one code path.
 
 ### `/api/energy_summary`
 

@@ -198,3 +198,93 @@ def test_save_energy_reading_accepts_bitshake_payload(test_db):
         assert reading.power_phase_1_watts == pytest.approx(0.0)
     finally:
         src.database.SessionLocal = original_session
+
+
+def test_latest_power_returns_newest_reading(test_db):
+    """latest_power returns the most recent row, flagged fresh."""
+    import src.database
+    from src.database import EnergyReading
+    from src.database import latest_power
+
+    session = test_db()
+    fresh_ts = datetime.now(local_timezone())
+    session.add(
+        EnergyReading(
+            timestamp=fresh_ts - timedelta(hours=1),
+            meter_id="test_meter",
+            power_watts=999.0,
+            energy_in_kwh=1999.0,
+            energy_out_kwh=0.0,
+            raw_payload="{}",
+        )
+    )
+    session.add(
+        EnergyReading(
+            timestamp=fresh_ts,
+            meter_id="test_meter",
+            power_watts=1234.5,
+            energy_in_kwh=2000.0,
+            energy_out_kwh=0.0,
+            raw_payload="{}",
+        )
+    )
+    session.commit()
+    session.close()
+
+    original_session = src.database.SessionLocal
+    src.database.SessionLocal = test_db
+    try:
+        result = latest_power()
+    finally:
+        src.database.SessionLocal = original_session
+
+    assert result["w"] == pytest.approx(1234.5)
+    assert result["t"] == int(fresh_ts.timestamp() * 1000)
+    assert result["stale"] is False
+    assert result["age_s"] < 60
+
+
+def test_latest_power_flags_stale_reading(test_db):
+    """A reading older than the staleness threshold is flagged."""
+    import src.database
+    from src.database import EnergyReading
+    from src.database import latest_power
+
+    session = test_db()
+    session.add(
+        EnergyReading(
+            timestamp=datetime.now(local_timezone()) - timedelta(minutes=10),
+            meter_id="test_meter",
+            power_watts=300.0,
+            energy_in_kwh=1000.0,
+            energy_out_kwh=0.0,
+            raw_payload="{}",
+        )
+    )
+    session.commit()
+    session.close()
+
+    original_session = src.database.SessionLocal
+    src.database.SessionLocal = test_db
+    try:
+        result = latest_power()
+    finally:
+        src.database.SessionLocal = original_session
+
+    assert result["stale"] is True
+    assert result["age_s"] > 60
+
+
+def test_latest_power_handles_empty_db(test_db):
+    """An empty database yields nulls rather than raising."""
+    import src.database
+    from src.database import latest_power
+
+    original_session = src.database.SessionLocal
+    src.database.SessionLocal = test_db
+    try:
+        result = latest_power()
+    finally:
+        src.database.SessionLocal = original_session
+
+    assert result == {"t": None, "w": None, "age_s": None, "stale": True}

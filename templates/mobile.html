@@ -11,43 +11,48 @@
 {% block sidebar %}{% endblock %}
 {% block sidebar_script %}{% endblock %}
 
-{% block header_controls %}
-<span id="status-connection" class="header-status header-status--pending" role="status">
-  <span class="header-status__dot" aria-hidden="true"></span>
-  <span class="header-status__label">Connecting…</span>
-</span>
-{% endblock %}
+{# No sidebar and only one page on mobile, so a title bar would say nothing. The
+   connection dot moves onto the live card instead. #}
+{% block header %}{% endblock %}
 
 {% block main_class %}mobile-main{% endblock %}
 
 {% block content %}
-<section class="mobile-input-section card">
-  <label for="days-input" class="mobile-input-label">Lookback Period</label>
-  <div class="mobile-input-row">
-    <select id="days-input" class="control-select mobile-days-select" aria-label="Lookback period in days">
-      <option value="7">7 days</option>
-      <option value="10">10 days</option>
-      <option value="14">14 days</option>
-      <option value="30">30 days</option>
-      <option value="60">60 days</option>
-      <option value="90">90 days</option>
-    </select>
+<section class="mobile-live-card card">
+  <div class="mobile-live-head">
+    <span class="stats-title">Current Usage</span>
+    {# The reading timestamp lands here (see startLivePower's metaHost), next to the dot,
+       so the header row carries all the freshness info and the figure stands alone. #}
+    <span id="live-meta"></span>
+    <span id="status-connection" class="header-status header-status--pending" role="status" aria-label="Connection status">
+      <span class="header-status__dot" aria-hidden="true"></span>
+    </span>
   </div>
+  <div id="live-power" class="live-power live-power--large" role="status" aria-live="polite"></div>
 </section>
 
-<section class="mobile-chart-card card">
-  <button type="button" id="btn-show-chart" class="btn mobile-btn-show-chart" aria-expanded="false" aria-controls="mobile-chart-content">Show chart</button>
-  <div id="mobile-chart-content" class="js-chart-content">
-    <div class="mobile-chart-wrapper">
-      <div id="chart"></div>
-      <div id="chart-loading" class="chart-loading">Loading chart…</div>
-    </div>
-    <div class="mobile-chart-toggles view-toggle" role="group" aria-label="Chart series">
-      <button type="button" class="mobile-toggle mobile-toggle-power active btn" data-series="1" aria-pressed="true">Power</button>
-      <button type="button" class="mobile-toggle mobile-toggle-energy active btn" data-series="2" aria-pressed="true">Meter</button>
-      <button type="button" class="mobile-toggle mobile-toggle-daily active btn" data-series="3" aria-pressed="true">Daily</button>
-      <button type="button" class="mobile-toggle mobile-toggle-typical active btn" data-series="4" aria-pressed="true">30d Avg</button>
-    </div>
+<div class="mobile-controls">
+  <select id="days-input" class="control-select mobile-days-select" aria-label="Lookback period in days">
+    <option value="7">7 days</option>
+    <option value="10">10 days</option>
+    <option value="14">14 days</option>
+    <option value="30">30 days</option>
+    <option value="60">60 days</option>
+    <option value="90">90 days</option>
+  </select>
+  <button type="button" id="btn-show-chart" class="btn" aria-expanded="false" aria-controls="mobile-chart-content">Show chart</button>
+</div>
+
+<section id="mobile-chart-content" class="card js-chart-content">
+  <div class="mobile-chart-wrapper">
+    <div id="chart"></div>
+    <div id="chart-loading" class="chart-loading">Loading chart…</div>
+  </div>
+  <div class="mobile-chart-toggles view-toggle" role="group" aria-label="Chart series">
+    <button type="button" class="mobile-toggle mobile-toggle-power active btn" data-series="1" aria-pressed="true">Power</button>
+    <button type="button" class="mobile-toggle mobile-toggle-energy active btn" data-series="2" aria-pressed="true">Meter</button>
+    <button type="button" class="mobile-toggle mobile-toggle-daily active btn" data-series="3" aria-pressed="true">Daily</button>
+    <button type="button" class="mobile-toggle mobile-toggle-typical active btn" data-series="4" aria-pressed="true">30d Avg</button>
   </div>
 </section>
 
@@ -90,8 +95,8 @@
   <div class="mobile-stat-card card">
     <div class="stats-title">Data Info</div>
     <div class="mobile-stat-row">
-      <span class="mobile-stat-label">Current consumption</span>
-      <span class="mobile-stat-value"><span id="stat-current-power" class="text-energy" aria-live="polite">–</span></span>
+      <span class="mobile-stat-label">Meter total</span>
+      <span class="mobile-stat-value"><span id="stat-meter-total" class="text-energy" aria-live="polite">–</span></span>
     </div>
     <div class="mobile-stat-row">
       <span class="mobile-stat-label">Data Points</span>

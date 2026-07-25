@@ -113,17 +113,137 @@ async function fetchJson(url, options = {}) {
  * Update the connection status indicator element.
  * @param {HTMLElement} statusEl - The status element to update
  * @param {boolean} ok - Whether the connection is OK
+ * @param {string} [text] - Override label; defaults to "Connected"/"Offline"
  */
-function setConnectionStatus(statusEl, ok) {
+function setConnectionStatus(statusEl, ok, text) {
   if (!statusEl) return;
+  // A statusEl with no label element is a bare dot (mobile) — colour is the whole message there.
   const label = statusEl.querySelector(".header-status__label");
-  if (label) {
-    label.textContent = ok ? "Connected" : "Offline";
-  } else {
-    statusEl.textContent = ok ? "Connected" : "Offline";
-  }
+  if (label) label.textContent = text || (ok ? "Connected" : "Offline");
   statusEl.classList.remove("header-status--connected", "header-status--offline", "header-status--pending");
   statusEl.classList.add(ok ? "header-status--connected" : "header-status--offline");
+}
+
+// =============================================================================
+// Live Power Readout
+// =============================================================================
+const LIVE_POWER_INTERVAL_MS = 5000;
+const LIVE_POWER_MAX_BACKOFF_MS = 30000;
+
+/**
+ * Format an age in seconds as a compact suffix ("12s ago", "4m ago").
+ */
+function formatAge(seconds) {
+  if (seconds == null || !Number.isFinite(seconds)) return "";
+  if (seconds < 60) return `${Math.round(seconds)}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
+  return `${Math.round(seconds / 86400)}d ago`;
+}
+
+/**
+ * Format a reading timestamp: clock time for today, full date-time otherwise.
+ * Time-only would be misleading on a feed that has been dead for days.
+ */
+function formatReadingTime(ms) {
+  if (!ms) return "";
+  const d = new Date(ms);
+  const now = new Date();
+  if (getDateKey(d) !== getDateKey(now)) return Fmt.t(ms);
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+}
+
+/**
+ * Poll /api/live_power and render watts into `el`.
+ *
+ * Uses a setTimeout chain rather than setInterval so a slow response cannot stack requests,
+ * and pauses entirely while the tab is hidden — a backgrounded phone would otherwise poll all day.
+ *
+ * @param {HTMLElement} el - Container; gets `.live-power__value` and `__unit` children
+ * @param {{intervalMs?: number, statusEl?: HTMLElement, metaHost?: HTMLElement}} options
+ *   metaHost receives the `.live-power__meta` block (`__time` + `__age`); defaults to `el`.
+ *   Mobile parks it in the card header so the big figure keeps a line to itself.
+ * @returns {() => void} - Stop function
+ */
+function startLivePower(el, { intervalMs = LIVE_POWER_INTERVAL_MS, statusEl = null, metaHost = null } = {}) {
+  if (!el) return () => {};
+
+  const valueEl = document.createElement("span");
+  valueEl.className = "live-power__value";
+  valueEl.textContent = "–";
+  const unitEl = document.createElement("span");
+  unitEl.className = "live-power__unit";
+  unitEl.textContent = "W";
+  const metaEl = document.createElement("span");
+  metaEl.className = "live-power__meta";
+  const timeEl = document.createElement("span");
+  timeEl.className = "live-power__time";
+  const ageEl = document.createElement("span");
+  ageEl.className = "live-power__age";
+  metaEl.replaceChildren(timeEl, ageEl);
+  el.replaceChildren(valueEl, unitEl);
+  (metaHost || el).appendChild(metaEl);
+
+  let timer = null;
+  let controller = null;
+  let failures = 0;
+  let stopped = false;
+
+  function render(data) {
+    const watts = data && data.w;
+    valueEl.textContent = watts == null ? "–" : Fmt.n(watts, 0);
+    const stale = !data || data.stale;
+    el.classList.toggle("is-stale", Boolean(stale));
+    timeEl.textContent = formatReadingTime(data && data.t);
+    ageEl.textContent = stale ? formatAge(data && data.age_s) : "";
+    if (statusEl) setConnectionStatus(statusEl, !stale);
+  }
+
+  function schedule(delayMs) {
+    if (stopped || document.hidden) return;
+    timer = setTimeout(tick, delayMs);
+  }
+
+  async function tick() {
+    if (stopped || document.hidden) return;
+    if (controller) controller.abort();
+    controller = new AbortController();
+    try {
+      const data = await fetchJson("/api/live_power", { signal: controller.signal });
+      failures = 0;
+      render(data);
+      schedule(intervalMs);
+    } catch (e) {
+      if (e.name === "AbortError") return;
+      failures += 1;
+      console.error("[livePower] fetch failed:", e);
+      el.classList.add("is-stale");
+      if (statusEl) setConnectionStatus(statusEl, false);
+      schedule(Math.min(intervalMs * 2 ** failures, LIVE_POWER_MAX_BACKOFF_MS));
+    }
+  }
+
+  function onVisibilityChange() {
+    if (document.hidden) {
+      clearTimeout(timer);
+      if (controller) controller.abort();
+    } else {
+      failures = 0;
+      tick();
+    }
+  }
+
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  window.addEventListener("pagehide", stop);
+  tick();
+
+  function stop() {
+    stopped = true;
+    clearTimeout(timer);
+    if (controller) controller.abort();
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+  }
+  return stop;
 }
 
 // =============================================================================
@@ -506,6 +626,7 @@ window.EnergyMonitor = {
   formatDuration,
   fetchJson,
   setConnectionStatus,
+  startLivePower,
   alignDailyDataToTimestamps,
   loadCostPerKwh,
   saveCostPerKwh,

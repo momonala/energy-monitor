@@ -4,11 +4,11 @@
 {% block page_title %}Dashboard{% endblock %}
 
 {% block header_controls %}
+<span id="live-power" class="live-power" role="status" aria-live="polite"></span>
 <span id="status-connection" class="header-status header-status--pending" role="status">
   <span class="header-status__dot" aria-hidden="true"></span>
-  <span class="header-status__label">Connecting…</span>
+  <span class="header-status__label">connecting…</span>
 </span>
-<span id="status-last" class="header-updated" aria-live="polite">–</span>
 {% endblock %}
 
 {% block content %}

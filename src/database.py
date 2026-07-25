@@ -40,6 +40,9 @@ class NegativeEnergyError(ValueError):
 DEFAULT_LOOKBACK_WEEKS = 52
 YEARLY_AVG_DAYS = 365
 
+# Readings arrive roughly every 10s; a minute without one means the feed is broken, not slow.
+LIVE_POWER_STALE_SECONDS = 60
+
 # Configure engine with timeout and connection pool settings for better concurrency
 engine = create_engine(
     DATABASE_URL,
@@ -210,6 +213,33 @@ def latest_energy_reading() -> EnergyReading | None:
         last_reading.pop("_sa_instance_state")
         last_reading["timestamp"] = last_reading["timestamp"].isoformat()
         return last_reading
+
+
+def latest_power() -> dict:
+    """
+    Get the most recent instantaneous power draw, for the live readout.
+
+    Selects two columns instead of hydrating the full row (the `raw_payload` blob is dead
+    weight when polling every few seconds). Returns nulls rather than raising on an empty DB
+    so the client has a single code path.
+    """
+    with SessionLocal() as session:
+        row = (
+            session.query(EnergyReading.timestamp, EnergyReading.power_watts)
+            .order_by(EnergyReading.timestamp.desc())
+            .first()
+        )
+    if row is None:
+        return {"t": None, "w": None, "age_s": None, "stale": True}
+
+    # Timestamps are stored as naive local datetimes (see save_energy_reading).
+    age_s = (datetime.now() - row.timestamp).total_seconds()
+    return {
+        "t": int(row.timestamp.timestamp() * 1000),
+        "w": row.power_watts,
+        "age_s": round(age_s, 1),
+        "stale": age_s > LIVE_POWER_STALE_SECONDS,
+    }
 
 
 def get_monthly_avg_daily_usage() -> float:

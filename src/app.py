@@ -28,6 +28,7 @@ from src.database import get_readings_cached
 from src.database import get_readings
 from src.database import get_stats
 from src.database import latest_energy_reading
+from src.database import latest_power
 from src.database import num_energy_readings_last_hour
 from src.database import num_total_energy_readings
 from src.helpers import local_timezone
@@ -176,6 +177,12 @@ def energy_summary():
 def api_latest_reading():
     """Return the last reading."""
     return jsonify(latest_energy_reading())
+
+
+@app.get("/api/live_power")
+def api_live_power():
+    """Return the latest instantaneous power draw for the live readout. Never cached."""
+    return jsonify(latest_power())
 
 
 @app.get("/api/stats")

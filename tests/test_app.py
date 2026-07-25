@@ -145,3 +145,22 @@ def test_clear_cache_returns_previous_stats(client):
         assert data["cleared"] is True
         assert data["previous"]["hits"] == 10
         assert data["previous"]["misses"] == 2
+
+
+def test_live_power_returns_payload(client):
+    """Live power endpoint passes through the database payload as JSON."""
+    payload = {"t": 1701432000000, "w": 512.3, "age_s": 4.2, "stale": False}
+    with patch("src.app.latest_power", return_value=payload):
+        response = client.get("/api/live_power")
+        assert response.status_code == 200
+        assert response.get_json() == payload
+
+
+def test_live_power_empty_db_returns_nulls(client):
+    """Empty database still returns 200 with null fields so the client has one code path."""
+    with patch("src.app.latest_power", return_value={"t": None, "w": None, "age_s": None, "stale": True}):
+        response = client.get("/api/live_power")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["w"] is None
+        assert data["stale"] is True

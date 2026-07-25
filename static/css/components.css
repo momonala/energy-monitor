@@ -148,14 +148,6 @@ body.sidebar-collapsed .sidebar-nav {
   flex-wrap: wrap;
 }
 
-.header-updated {
-  font-size: var(--text-meta);
-  font-weight: 400;
-  color: var(--label-tertiary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 .last-updated,
 .header-meta {
   font-size: 11px;
@@ -198,6 +190,51 @@ body.sidebar-collapsed .sidebar-nav {
 
 .header-status--offline .header-status__dot {
   background: var(--danger);
+}
+
+/* ── Live power readout ──────────────────────────────── */
+
+.live-power {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  color: var(--series-power);
+  white-space: nowrap;
+}
+
+.live-power__unit {
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--label-tertiary);
+}
+
+.live-power__meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-left: 6px;
+  font-size: var(--text-meta);
+  font-weight: 400;
+  color: var(--label-tertiary);
+}
+
+/* Stale: the number is last-known, not current — mute it rather than blanking it. */
+.live-power.is-stale .live-power__value {
+  color: var(--label-tertiary);
+}
+
+.live-power--large {
+  font-size: 34px;
+  letter-spacing: -1.2px;
+}
+
+.live-power--large .live-power__unit {
+  font-size: var(--text-body);
 }
 
 /* ── Buttons & controls ──────────────────────────────── */

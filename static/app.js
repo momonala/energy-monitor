@@ -2,6 +2,7 @@
   const {
     fetchJson,
     setConnectionStatus,
+    startLivePower,
     getDesktopChartAxes,
     getDesktopChartSeries,
     getChartSelectOptions,
@@ -10,7 +11,7 @@
   const chartEl = document.getElementById("chart");
   const chartLoading = document.getElementById("chart-loading");
   const statusConn = document.getElementById("status-connection");
-  const statusLast = document.getElementById("status-last");
+  const livePowerEl = document.getElementById("live-power");
   const statEnergy = document.getElementById("stat-energy");
   const statAvg = document.getElementById("stat-avg");
   const statMax = document.getElementById("stat-max");
@@ -171,8 +172,12 @@
     },
   };
 
-  function setConnection(ok) {
-    setConnectionStatus(statusConn, ok);
+  /**
+   * The header token reports data freshness, and the live-power poller owns that — it runs
+   * every few seconds against the same backend. A chart fetch only speaks up when it fails.
+   */
+  function reportChartFetchFailed() {
+    setConnectionStatus(statusConn, false, "offline");
   }
 
   /**
@@ -489,10 +494,6 @@
       }
     }
     
-    const lastIdx = xVals.length - 1;
-    if (statusLast && lastIdx >= 0) {
-      statusLast.textContent = fmt.t(xVals[lastIdx] * 1000);
-    }
     if (selection.start && selection.end) {
       computeStatsLocal(selection.start, selection.end);
     }
@@ -514,10 +515,7 @@
       const rows = await fetchJson(`/api/readings?${qs.toString()}`, fetchOpts);
       
       // No new data
-      if (!rows.length) {
-        setConnection(true);
-        return;
-      }
+      if (!rows.length) return;
       
       // Map primary series from power if present
       let mapped = rows.map((r) => [r.t, r.p]);
@@ -591,8 +589,7 @@
       }
       
       updateChart();
-      setConnection(true);
-      
+
       // Update period summaries only on incremental updates (polling)
       // Initial load will call it once in the initialization .then() block
       if (incremental) {
@@ -601,7 +598,7 @@
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
       console.error(e);
-      setConnection(false);
+      reportChartFetchFailed();
     }
   }
 
@@ -1070,7 +1067,8 @@
   // --------------------------------------------------------------------------
   showLoading();
   initChart();
-  
+  startLivePower(livePowerEl, { statusEl: statusConn });
+
   // Load chart data and summary in parallel for faster initial render
   // Use allSettled to ensure updatePeriodSummaries runs even if one fetch fails
   const initialEndMs = getChartWindowEndMs();

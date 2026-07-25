@@ -5,7 +5,7 @@
  */
 (() => {
   // Import shared utilities
-  const { Fmt, formatDuration, fetchJson, setConnectionStatus, alignDailyDataToTimestamps,
+  const { Fmt, formatDuration, fetchJson, setConnectionStatus, startLivePower, alignDailyDataToTimestamps,
           loadCostPerKwh, getBaseChartAxes, processReadingsData, readChartTheme } = window.EnergyMonitor;
 
   // DOM Elements
@@ -24,7 +24,9 @@
   const statRange = document.getElementById("stat-range");
   const dailyTableBody = document.getElementById("daily-table-body");
   const dailyTableTitle = document.getElementById("daily-table-title");
-  const statCurrentPower = document.getElementById("stat-current-power");
+  const statMeterTotal = document.getElementById("stat-meter-total");
+  const livePowerEl = document.getElementById("live-power");
+  const liveMetaEl = document.getElementById("live-meta");
   const btnShowChart = document.getElementById("btn-show-chart");
   const chartContent = document.querySelector(".js-chart-content");
   const dailyTableSection = document.querySelector(".js-daily-table-section");
@@ -192,10 +194,10 @@
   // --------------------------------------------------------------------------
   // Data Fetching
   // --------------------------------------------------------------------------
-  function updateCurrentPowerRow(latestReading) {
-    if (!statCurrentPower) return;
+  function updateMeterTotalRow(latestReading) {
+    if (!statMeterTotal) return;
     const kwh = latestReading?.energy_in_kwh;
-    statCurrentPower.textContent = kwh != null ? `${Fmt.n(kwh, 2)} kWh` : "–";
+    statMeterTotal.textContent = kwh != null ? `${Fmt.n(kwh, 2)} kWh` : "–";
   }
 
   /**
@@ -206,15 +208,12 @@
     const now = Date.now();
     const startMs = now - days * 24 * 60 * 60 * 1000;
 
+    // Connection status is owned by the live-power poller — it runs every few seconds.
     fetchJson("/api/latest_reading")
-      .then((data) => {
-        updateCurrentPowerRow(data);
-        setConnectionStatus(statusConn, true);
-      })
+      .then(updateMeterTotalRow)
       .catch((e) => {
         console.error("Latest reading fetch error:", e);
-        updateCurrentPowerRow(null);
-        setConnectionStatus(statusConn, false);
+        updateMeterTotalRow(null);
       });
 
     fetchJson(`/api/stats?start=${startMs}&end=${now}`)
@@ -443,7 +442,7 @@
     statMin.textContent = "–";
     statCount.textContent = "–";
     statRange.textContent = "–";
-    updateCurrentPowerRow(null);
+    updateMeterTotalRow(null);
   }
 
   // --------------------------------------------------------------------------
@@ -495,6 +494,8 @@
         }
       });
     }
+
+    startLivePower(livePowerEl, { statusEl: statusConn, metaHost: liveMetaEl });
 
     const initialDays = parseInt(daysInput.value, 10) || 7;
     loadInitialData(initialDays);
