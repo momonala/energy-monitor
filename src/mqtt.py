@@ -36,12 +36,12 @@ INFO3_TOPIC = "tele/tasmota/INFO3"
 
 
 def format_downtime(seconds: float) -> str:
-    """Format a duration as DD:HH:MM:SS."""
+    """Format a duration compactly, e.g. '1d 2h 3m 4s'."""
     total = int(seconds)
     days, rem = divmod(total, 86400)
     hours, rem = divmod(rem, 3600)
     minutes, secs = divmod(rem, 60)
-    return f"{days:02d}:{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{days}d {hours}h {minutes}m {secs}s"
 
 
 def handle_lwt_status(payload: str) -> None:
@@ -60,8 +60,8 @@ def handle_lwt_status(payload: str) -> None:
         downtime_s = time.time() - _offline_since
         metrics.timing("mqtt.device.downtime_ms", downtime_s * 1000)
         downtime = format_downtime(downtime_s)
-        logger.info(f"[recovery] device back online after {downtime} (DD:HH:MM:SS)")
-        send_alert(f"Hardware device came *online* — down for `{downtime}` (DD:HH:MM:SS)")
+        logger.info(f"[recovery] device back online after {downtime}")
+        send_alert(f"Hardware device came *online* — down for `{downtime}`")
         _offline_since = None
 
 

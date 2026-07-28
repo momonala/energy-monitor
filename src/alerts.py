@@ -11,7 +11,7 @@ from src.observability import metrics
 
 logger = get_logger(__name__)
 
-ALERT_PREFIX = "⚡️*ENERGY MONITOR:*⚡️"
+ALERT_PREFIX = "⚡️*ENERGY MONITOR*⚡️\n"
 _ALERT_TIMEOUT_SECONDS = 10
 
 
