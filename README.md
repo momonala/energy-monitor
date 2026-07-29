@@ -309,7 +309,7 @@ The scheduler service runs periodic tasks via the `schedule` library:
 
 | Schedule     | Task                                                              |
 | ------------ | ----------------------------------------------------------------- |
-| Hourly `:00` | Log DB health check (reading counts); alert if &lt; 300/hour     |
+| Hourly `:00` | Log DB health check (reading counts, DB size in MB); alert if &lt; 300/hour |
 | Hourly `:00` | Commit DB to git if changed (amend + force push)                  |
 
 

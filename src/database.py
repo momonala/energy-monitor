@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 from datetime import datetime
 from datetime import timedelta
@@ -18,6 +19,7 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from src.alerts import send_alert
+from src.config import DATABASE_PATH
 from src.config import DATABASE_URL
 from src.helpers import local_timezone
 from src.helpers import timed
@@ -299,7 +301,9 @@ def log_db_health_check():
         send_alert(f"Only {num_readings_last_hour} readings in the last hour")
     num_total_readings = num_total_energy_readings()
     metrics.gauge("db.readings.total", num_total_readings)
-    logger.info(f"{num_readings_last_hour=} {num_total_readings=}")
+    db_size_mb = os.path.getsize(DATABASE_PATH) / (1024 * 1024)
+    metrics.gauge("db.size_mb", db_size_mb)
+    logger.info(f"{num_readings_last_hour=} {num_total_readings=} {db_size_mb=:.1f}")
 
 
 def get_readings(
