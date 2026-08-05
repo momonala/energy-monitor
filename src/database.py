@@ -303,7 +303,7 @@ def log_db_health_check():
     metrics.gauge("db.readings.total", num_total_readings)
     db_size_mb = os.path.getsize(DATABASE_PATH) / (1024 * 1024)
     metrics.gauge("db.size_mb", db_size_mb)
-    logger.info(f"{num_readings_last_hour=} {num_total_readings=} {db_size_mb=:.1f}")
+    logger.debug(f"{num_readings_last_hour=} {num_total_readings=} {db_size_mb=:.1f}")
 
 
 def get_readings(
