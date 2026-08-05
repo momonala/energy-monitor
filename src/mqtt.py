@@ -71,9 +71,7 @@ def db_worker():
         item = db_queue.get()
         if item is None:  # sentinel to stop
             break
-        payload, enqueued_at = item
-        wait_ms = (time.perf_counter() - enqueued_at) * 1000
-        metrics.timing("mqtt.db_queue.wait_ms", wait_ms)
+        payload, _ = item
         try:
             save_energy_reading(tasmota_payload=payload)
         except Exception:
