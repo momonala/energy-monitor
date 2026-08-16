@@ -12,7 +12,7 @@ dependencies = [
     "paho-mqtt>=2.0.0,<3.0.0",
     "flask>=3.0.0,<4.0.0",
     "flask-compress>=1.15,<2.0.0",
-    "schedule>=1.0.0,<2.0.0",
+    "flask-apscheduler>=1.13,<2.0.0",
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
     "black",

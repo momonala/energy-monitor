@@ -12,6 +12,7 @@ from flask import jsonify
 from flask import redirect
 from flask import render_template
 from flask import request
+from flask_apscheduler import APScheduler
 from flask_compress import Compress
 
 import src.observability  # noqa: F401 — configure Spyglass logging before other src imports
@@ -29,6 +30,7 @@ from src.database import get_readings
 from src.database import get_stats
 from src.database import latest_energy_reading
 from src.database import latest_power
+from src.database import log_db_health_check
 from src.database import num_energy_readings_last_hour
 from src.database import num_total_energy_readings
 from src.helpers import local_timezone
@@ -46,8 +48,20 @@ app = Flask(
     static_folder=str(project_root / "static"),
     template_folder=str(project_root / "templates"),
 )
+app.config["SCHEDULER_API_ENABLED"] = False
 Compress(app)  # Enable gzip compression for responses > 500 bytes
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
+logging.getLogger("apscheduler").setLevel(logging.WARNING)
+
+scheduler = APScheduler()
+scheduler.init_app(app)
+
+
+@scheduler.task("cron", id="db_health_check", hour="*", minute=0)
+def _scheduled_db_health_check() -> None:
+    """Hourly DB health check, run in-process by APScheduler."""
+    log_db_health_check()
+
 
 _NAV_ACTIVE_BY_ENDPOINT = {
     "index": "dashboard",
@@ -245,6 +259,8 @@ def observability():
 def main():
     logger.info(f"Starting Flask server on http://0.0.0.0:{FLASK_PORT}")
     logger.info(f"Status: {json.dumps(status(), indent=2)}")
+    scheduler.start()
+    logger.info("Started APScheduler: hourly DB health check")
     app.run(host="0.0.0.0", port=FLASK_PORT, debug=False)
 
 

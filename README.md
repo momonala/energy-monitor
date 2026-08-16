@@ -20,8 +20,8 @@ flowchart LR
         MQTT --> DB[(SQLite)]
         Flask[Flask :5008] --> DB
         Flask --> UI[Web Dashboard]
-        Scheduler[Scheduler] --> DB
-        Scheduler --> Git[Git Auto-commit]
+        Flask --> Scheduler[APScheduler]
+        Scheduler --> DB
     end
 ```
 
@@ -75,7 +75,6 @@ cd ~/code/spyglass && uv tool install --editable . && spyglass serve
 # Terminal 2 — energy-monitor (project name: energy-monitor)
 uv run app
 uv run python -m src.mqtt
-uv run python -m src.scheduler
 ```
 
 Query data:
@@ -128,11 +127,9 @@ stacked boxes before any data. The chart card itself is `.js-chart-content` — 
 ```
 energy-monitor/
 ├── src/
-│   ├── app.py          # Flask entry point, API routes, mobile detection
+│   ├── app.py          # Flask entry point, API routes, mobile detection, APScheduler (DB health check)
 │   ├── database.py     # SQLAlchemy models, queries, stats
 │   ├── mqtt.py         # Standalone MQTT client service entry point
-│   ├── scheduler.py    # Standalone scheduler entry point (health check, git commit)
-│   ├── git_tool.py     # Auto-commit DB changes to git
 │   ├── helpers.py      # Time parsing utilities
 │   ├── config.py       # Configuration constants
 │   └── alerts.py       # Telegram alerts via Service Monitor API
@@ -158,9 +155,8 @@ energy-monitor/
 │   └── test_*.py       # Test files
 └── install/
     ├── install.sh                              # Raspberry Pi setup script
-    ├── projects_energy-monitor.service         # systemd service for web app
-    ├── projects_energy-monitor_mqtt.service    # systemd service for MQTT client
-    └── projects_energy-monitor_data-backup-scheduler.service # systemd service for scheduler
+    ├── projects_energy-monitor.service         # systemd service for web app (includes APScheduler)
+    └── projects_energy-monitor_mqtt.service    # systemd service for MQTT client
 ```
 
 ## API Endpoints
@@ -304,13 +300,12 @@ EnergyReading
 
 ## Background Jobs
 
-The scheduler service runs periodic tasks via the `schedule` library:
+The Flask app runs periodic tasks in-process via `flask-apscheduler`:
 
 
 | Schedule     | Task                                                              |
 | ------------ | ----------------------------------------------------------------- |
 | Hourly `:00` | Log DB health check (reading counts, DB size in MB); alert if &lt; 300/hour |
-| Hourly `:00` | Commit DB to git if changed (amend + force push)                  |
 
 
 ### Alerts
@@ -329,9 +324,6 @@ Run services separately:
 ```bash
 # Run MQTT client
 uv run python -m src.mqtt
-
-# Run scheduler
-uv run python -m src.scheduler
 ```
 
 ## Deployment (Raspberry Pi)
@@ -344,30 +336,26 @@ uv run python -m src.scheduler
    This will:
   - Install uv (if not already installed)
   - Install dependencies via uv
-  - Set up systemd services (web app, MQTT client, and scheduler)
+  - Set up systemd services (web app and MQTT client)
   - Configure Cloudflare tunnel (if applicable)
 2. Service management:
-  Three services are installed:
+  Two services are installed:
 
-  | Service                                                 | Purpose                                       | Port |
-  | ------------------------------------------------------- | --------------------------------------------- | ---- |
-  | `projects_energy-monitor.service`                       | Flask web application                         | 5008 |
-  | `projects_energy-monitor_mqtt.service`                  | MQTT client for receiving meter data          | N/A  |
-  | `projects_energy-monitor_data-backup-scheduler.service` | Hourly database health checks and git backups | N/A  |
+  | Service                                | Purpose                                                | Port |
+  | --------------------------------------- | ------------------------------------------------------ | ---- |
+  | `projects_energy-monitor.service`      | Flask web application (includes hourly APScheduler job) | 5008 |
+  | `projects_energy-monitor_mqtt.service` | MQTT client for receiving meter data                    | N/A  |
 
   ```bash
   # Check status
   sudo systemctl status projects_energy-monitor.service
   sudo systemctl status projects_energy-monitor_mqtt.service
-  sudo systemctl status projects_energy-monitor_data-backup-scheduler.service
 
   # View logs
   sudo journalctl -u projects_energy-monitor.service -f
   sudo journalctl -u projects_energy-monitor_mqtt.service -f
-  sudo journalctl -u projects_energy-monitor_data-backup-scheduler.service -f
 
   # Restart services
   sudo systemctl restart projects_energy-monitor.service
   sudo systemctl restart projects_energy-monitor_mqtt.service
-  sudo systemctl restart projects_energy-monitor_data-backup-scheduler.service
   ```

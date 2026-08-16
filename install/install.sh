@@ -22,7 +22,6 @@ service_name=$(uv run config --project-name)
 service_port=$(uv run config --flask-port)
 tunnel_name=$(uv run config --tunnel-name)
 domain_suffix=$(uv run config --domain-suffix)
-scheduler_service_name="${service_name}_data-backup-scheduler"
 mqtt_service_name="${service_name}_mqtt"
 
 echo "📋 Configuration:"
@@ -35,12 +34,10 @@ echo "📋 Configuration:"
 
 echo "✅ Copying service files to systemd directory"
 sudo cp install/projects_${service_name}.service /lib/systemd/system/projects_${service_name}.service
-sudo cp install/projects_${scheduler_service_name}.service /lib/systemd/system/projects_${scheduler_service_name}.service
 sudo cp install/projects_${mqtt_service_name}.service /lib/systemd/system/projects_${mqtt_service_name}.service
 
 echo "✅ Setting permissions for the service files"
 sudo chmod 644 /lib/systemd/system/projects_${service_name}.service
-sudo chmod 644 /lib/systemd/system/projects_${scheduler_service_name}.service
 sudo chmod 644 /lib/systemd/system/projects_${mqtt_service_name}.service
 
 echo "✅ Reloading systemd daemon"
@@ -49,17 +46,14 @@ sudo systemctl daemon-reexec
 
 echo "✅ Enabling the services"
 sudo systemctl enable projects_${service_name}.service
-sudo systemctl enable projects_${scheduler_service_name}.service
 sudo systemctl enable projects_${mqtt_service_name}.service
 
 echo "✅ Starting the services"
 sudo systemctl restart projects_${service_name}.service
-sudo systemctl restart projects_${scheduler_service_name}.service
 sudo systemctl restart projects_${mqtt_service_name}.service
 
 echo "✅ Service status:"
 sudo systemctl status projects_${service_name}.service --no-pager
-sudo systemctl status projects_${scheduler_service_name}.service --no-pager
 sudo systemctl status projects_${mqtt_service_name}.service --no-pager
 
 echo "✅ Adding Cloudflared service"
