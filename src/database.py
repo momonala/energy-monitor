@@ -292,13 +292,33 @@ def num_total_energy_readings() -> int:
         return session.query(EnergyReading).count()
 
 
+def time_since_last_reading() -> timedelta | None:
+    """Get the time elapsed since the most recent energy reading, or None if the DB is empty."""
+    with SessionLocal() as session:
+        last_timestamp = session.query(func.max(EnergyReading.timestamp)).scalar()
+    if last_timestamp is None:
+        return None
+    # Timestamps are stored as naive local datetimes (see save_energy_reading).
+    return datetime.now() - last_timestamp
+
+
+def _format_timedelta(td: timedelta) -> str:
+    total_minutes = int(td.total_seconds() // 60)
+    hours, minutes = divmod(total_minutes, 60)
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
 def log_db_health_check():
     """Log the number of records in the DB as a health check."""
     num_readings_last_hour = num_energy_readings_last_hour()
     metrics.gauge("db.readings.last_hour", num_readings_last_hour)
     if num_readings_last_hour < 300:
         metrics.increment("db.health.low_readings")
-        send_alert(f"Only {num_readings_last_hour} readings in the last hour")
+        downtime = time_since_last_reading()
+        downtime_msg = f" (last reading {_format_timedelta(downtime)} ago)" if downtime is not None else ""
+        send_alert(f"Last hour: {num_readings_last_hour} readings{downtime_msg}")
     num_total_readings = num_total_energy_readings()
     metrics.gauge("db.readings.total", num_total_readings)
     db_size_mb = os.path.getsize(DATABASE_PATH) / (1024 * 1024)
