@@ -5,28 +5,6 @@
 
 Real-time energy monitoring dashboard for MT681 smart meters via Tasmota MQTT.
 
-## Architecture
-
-```mermaid
-flowchart LR
-    subgraph Hardware
-        Meter[MT681 Meter] -->|IR| Tasmota[Tasmota IR Reader]
-    end
-    subgraph Infrastructure
-        Tasmota -->|MQTT :1883| Broker[MQTT Broker]
-    end
-    subgraph Services
-        Broker --> MQTT[MQTT Service]
-        MQTT --> DB[(SQLite)]
-        Flask[Flask :5008] --> DB
-        Flask --> UI[Web Dashboard]
-        Flask --> Scheduler[APScheduler]
-        Scheduler --> DB
-    end
-```
-
-**Data flow:** Meter → IR → Tasmota → MQTT Broker → MQTT Service → SQLite → Flask REST API → Browser
-
 ## Hardware
 
 - MT681 smart meter (or compatible SML meter)
@@ -44,8 +22,8 @@ flowchart LR
 
 1. Clone and install dependencies:
   ```bash
-   git clone https://github.com/momonala/energyMeter.git
-   cd energyMeter
+   git clone https://github.com/momonala/energy-monitor.git
+   cd energy-monitor
    curl -LsSf https://astral.sh/uv/install.sh | sh
    uv sync
   ```
@@ -58,23 +36,21 @@ flowchart LR
 
 ## Running
 
+Two processes: the Flask app and the MQTT client.
+
 ```bash
 uv run app
+uv run python -m src.mqtt
 ```
 
 Open `http://localhost:5008`
 
 ## Observability (Spyglass)
 
-Logs and metrics ship to a local [Spyglass](https://github.com/momonala/spyglass) server (`spyglass_host` in `[tool.config]`, default `localhost:5013`).
+Logs and metrics ship to a local [Spyglass](https://github.com/momonala/spyglass) server (`spyglass_host` in `[tool.config]`, default `localhost:5013`), started separately:
 
 ```bash
-# Terminal 1 — one Spyglass server for all projects on this machine
 cd ~/code/spyglass && uv tool install --editable . && spyglass serve
-
-# Terminal 2 — energy-monitor (project name: energy-monitor)
-uv run app
-uv run python -m src.mqtt
 ```
 
 Query data:
@@ -83,34 +59,6 @@ Query data:
 curl "http://localhost:5013/metrics?project=energy-monitor&limit=20"
 curl "http://localhost:5013/logs?project=energy-monitor&level=INFO"
 ```
-
-## Dashboard Features
-
-### Layout
-
-- **Chart**: Power (W), cumulative energy (kWh), and daily usage trend (30-day moving average or total average)
-- **Selection Stats**: Statistics for the selected time range
-- **Period Summary**: Today, this week, this month, and total consumption
-
-### Live Updates
-
-- **Live power readout** ("Current Usage"): current watts in the header (desktop) and a card at the top of
-  `/mobile`. `startLivePower()` in `shared.js` polls `/api/live_power` every 5s via a `setTimeout` chain (so a
-  slow response cannot stack requests), pauses entirely while the tab is hidden, and backs off to 30s on
-  repeated failures. When the feed goes stale the last-known value is dimmed rather than blanked.
-- Both views render the reading's timestamp — clock time for today, full date-time for anything older, since
-  time-only would be misleading on a feed that has been dead for days. A stale feed adds an age suffix
-  (`4m ago`). Desktop puts it inline after the watts; mobile passes `metaHost` so it lands in the card header
-  row next to the "Current Usage" label, leaving the big figure a line of its own.
-- This poller owns the connection indicator on both views. On desktop a chart fetch only writes to it on
-  failure — otherwise two components would race to describe the same backend. The mobile indicator is a bare
-  dot with no text label: `setConnectionStatus()` writes text only when the element contains a
-  `.header-status__label`, so the timestamp is the only place freshness is spelled out there.
-- Data refreshes every 10 seconds via incremental polling
-- Only new data points are fetched and appended to the chart
-- Data point count in the stats panel
-- Auto-expands view if watching near real-time (within 2 minutes of latest data)
-
 
 ## Mobile Dashboard
 
@@ -159,6 +107,28 @@ energy-monitor/
     └── projects_energy-monitor_mqtt.service    # systemd service for MQTT client
 ```
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Hardware
+        Meter[MT681 Meter] -->|IR| Tasmota[Tasmota IR Reader]
+    end
+    subgraph Infrastructure
+        Tasmota -->|MQTT :1883| Broker[MQTT Broker]
+    end
+    subgraph Services
+        Broker --> MQTT[MQTT Service]
+        MQTT --> DB[(SQLite)]
+        Flask[Flask :5008] --> DB
+        Flask --> UI[Web Dashboard]
+        Flask --> Scheduler[APScheduler]
+        Scheduler --> DB
+    end
+```
+
+**Data flow:** Meter → IR → Tasmota → MQTT Broker → MQTT Service → SQLite → Flask REST API → Browser
+
 ## API Endpoints
 
 
@@ -166,12 +136,15 @@ energy-monitor/
 | --------------------- | ------ | -------------------------------------------------------- |
 | `/`                   | GET    | Serve desktop dashboard (redirects mobile to `/mobile`)  |
 | `/mobile`             | GET    | Serve mobile-optimized dashboard                         |
+| `/compare`            | GET    | Serve period comparison page                              |
 | `/api/readings`       | GET    | Fetch readings with optional time range                  |
 | `/api/latest_reading` | GET    | Get most recent reading (full row)                       |
 | `/api/live_power`     | GET    | Latest instantaneous power draw, for the live readout    |
 | `/api/energy_summary` | GET    | Get avg daily usage, daily usage, and 30d moving average |
 | `/api/stats`          | GET    | Compute statistics for a time range                      |
+| `/api/clear_cache`    | GET    | Clear the in-process LRU cache backing `/api/readings`   |
 | `/status`             | GET    | Service health, connection status, job info              |
+| `/observability`      | GET    | Redirects to the Spyglass-hosted observability dashboard |
 
 
 ### `/api/readings`
@@ -317,45 +290,3 @@ Sent as Markdown via Service Monitor `POST /api/alert` (`service_monitor_url` in
 | ------- | ------- |
 | Tasmota LWT `Offline` / `Online` | Hardware device went offline / came online |
 | Hourly health check | Fewer than 300 readings in the last hour |
-
-
-Run services separately:
-
-```bash
-# Run MQTT client
-uv run python -m src.mqtt
-```
-
-## Deployment (Raspberry Pi)
-
-1. Run the install script:
-  ```bash
-   cd install
-   ./install.sh
-  ```
-   This will:
-  - Install uv (if not already installed)
-  - Install dependencies via uv
-  - Set up systemd services (web app and MQTT client)
-  - Configure Cloudflare tunnel (if applicable)
-2. Service management:
-  Two services are installed:
-
-  | Service                                | Purpose                                                | Port |
-  | --------------------------------------- | ------------------------------------------------------ | ---- |
-  | `projects_energy-monitor.service`      | Flask web application (includes hourly APScheduler job) | 5008 |
-  | `projects_energy-monitor_mqtt.service` | MQTT client for receiving meter data                    | N/A  |
-
-  ```bash
-  # Check status
-  sudo systemctl status projects_energy-monitor.service
-  sudo systemctl status projects_energy-monitor_mqtt.service
-
-  # View logs
-  sudo journalctl -u projects_energy-monitor.service -f
-  sudo journalctl -u projects_energy-monitor_mqtt.service -f
-
-  # Restart services
-  sudo systemctl restart projects_energy-monitor.service
-  sudo systemctl restart projects_energy-monitor_mqtt.service
-  ```
