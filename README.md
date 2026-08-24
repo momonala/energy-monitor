@@ -75,11 +75,12 @@ stacked boxes before any data. The chart card itself is `.js-chart-content` — 
 ```
 energy-monitor/
 ├── src/
-│   ├── app.py          # Flask entry point, API routes, mobile detection, APScheduler (DB health check)
+│   ├── app.py          # Flask entry point, API routes, mobile detection, APScheduler (stall watch, DB health)
 │   ├── database.py     # SQLAlchemy models, queries, stats
 │   ├── mqtt.py         # Standalone MQTT client service entry point
 │   ├── helpers.py      # Time parsing utilities
 │   ├── config.py       # Configuration constants
+│   ├── diagnostics.py  # Hop-ladder probe that names the fault domain behind a stall
 │   └── alerts.py       # Telegram alerts via Service Monitor API
 ├── templates/
 │   ├── _base.html      # Shared shell (sidebar, header, Spyglass layout)
@@ -129,6 +130,13 @@ flowchart LR
 
 **Data flow:** Meter → IR → Tasmota → MQTT Broker → MQTT Service → SQLite → Flask REST API → Browser
 
+**Quirk — the two services share nothing but the DB.** `src/app.py` and `src/mqtt.py` run as
+separate systemd units, so a module-level global set in one is always `None` in the other. Anything
+Flask needs to know about ingestion must be derived from SQLite: `/status` reports
+`receiving_readings` from the age of the newest row, and `handle_lwt_status` computes outage
+duration the same way so it survives a restart mid-outage. Don't reintroduce a shared-client global —
+it reads as working and is silently always false.
+
 ## API Endpoints
 
 
@@ -143,7 +151,7 @@ flowchart LR
 | `/api/energy_summary` | GET    | Get avg daily usage, daily usage, and 30d moving average |
 | `/api/stats`          | GET    | Compute statistics for a time range                      |
 | `/api/clear_cache`    | GET    | Clear the in-process LRU cache backing `/api/readings`   |
-| `/status`             | GET    | Service health, connection status, job info              |
+| `/status`             | GET    | Service health, ingestion freshness, reading counts      |
 | `/observability`      | GET    | Redirects to the Spyglass-hosted observability dashboard |
 
 
@@ -276,9 +284,10 @@ EnergyReading
 The Flask app runs periodic tasks in-process via `flask-apscheduler`:
 
 
-| Schedule     | Task                                                              |
-| ------------ | ----------------------------------------------------------------- |
-| Hourly `:00` | Log DB health check (reading counts, DB size in MB); alert if &lt; 300/hour |
+| Schedule       | Task                                                                        |
+| -------------- | --------------------------------------------------------------------------- |
+| Every minute   | `check_ingestion_stall` — detect, diagnose, and escalate ingestion outages   |
+| Hourly `:00`   | `log_db_health_check` — reading counts and DB size metrics (no alerts)       |
 
 
 ### Alerts
@@ -288,5 +297,39 @@ Sent as Markdown via Service Monitor `POST /api/alert` (`service_monitor_url` in
 
 | Trigger | Message |
 | ------- | ------- |
-| Tasmota LWT `Offline` / `Online` | Hardware device went offline / came online |
-| Hourly health check | Fewer than 300 readings in the last hour |
+| `check_ingestion_stall` (every minute) | `No readings for 15m` plus a verdict naming the fault domain |
+| Tasmota LWT `Online` | All-clear, with downtime measured from the last stored reading |
+
+**`check_ingestion_stall` is the only source of outage alerts.** LWT `Offline` deliberately
+stays silent, and the hourly health check is metrics-only. The two run in different
+processes and cannot coordinate, so a single owner is the only way to guarantee one outage
+never produces two alerts — and the owner is the one that can diagnose rather than just
+report the symptom.
+
+It runs every minute but alerts only when the outage *crosses* a threshold — 2m, 15m, 1h,
+6h, 24h, then daily — so each fires exactly once and the network probe runs only on a
+crossing, never on every tick. Crossings rather than bands means no memory of what was
+already sent, so a restart mid-outage cannot reset the cadence. The 2-minute floor is the
+blip filter: readings arrive every ~10s, so 2 minutes of silence is a real fault while a
+brief WiFi drop resolves before it trips. The Aug 2026 outage sent 138 identical hourly
+messages; the same outage now sends 5 in the first day, each one diagnosed.
+
+#### Diagnosing a stall (`src/diagnostics.py`)
+
+An empty database looks the same whether the meter dropped off WiFi or this host lost its
+path to the LAN, so the alert probes a ladder of hops and names which one broke:
+
+| gateway | access point | meter | Verdict |
+| ------- | ------------ | ----- | ------- |
+| ❌ | — | — | this host's own link is down |
+| ✅ | ❌ | ❌ | LAN path fault — switch isolation, cabling, routing |
+| ✅ | ✅ | ❌ | meter offline — power or WiFi range |
+| ✅ | ✅ | ✅ | broker or ingestion service, not the network |
+
+**The access point is the discriminator.** A meter that fell off WiFi leaves it reachable;
+a segmented LAN does not. Probing only the meter cannot separate those two cases and
+reports the wrong one — which is exactly how a switch-isolation fault was misread as a
+device outage for seven days. When the meter does answer, its `Status 11` counters
+(`LinkCount`, `Downtime`, `Uptime`) further separate a flapping radio from a clean crash.
+
+Probe targets are `gateway_ip` and `access_point_ip` in `[tool.config]`.

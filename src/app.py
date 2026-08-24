@@ -30,12 +30,13 @@ from src.database import get_readings
 from src.database import get_stats
 from src.database import latest_energy_reading
 from src.database import latest_power
+from src.database import check_ingestion_stall
 from src.database import log_db_health_check
 from src.database import num_energy_readings_last_hour
 from src.database import num_total_energy_readings
+from src.database import time_since_last_reading
 from src.helpers import local_timezone
 from src.helpers import parse_time_param
-from src.mqtt import get_mqtt_client
 from src.observability import get_logger
 from src.observability import metrics
 
@@ -56,11 +57,24 @@ logging.getLogger("apscheduler").setLevel(logging.WARNING)
 scheduler = APScheduler()
 scheduler.init_app(app)
 
+# The meter publishes roughly every 10s; a longer gap than this means ingestion has stalled.
+READING_STALE_AFTER = timedelta(seconds=60)
+
+# How often the stall watcher runs. Also the window it detects threshold crossings in, so
+# the two must stay in step — passing it explicitly keeps that contract visible.
+INGESTION_WATCH_INTERVAL = timedelta(minutes=1)
+
 
 @scheduler.task("cron", id="db_health_check", hour="*", minute=0)
 def _scheduled_db_health_check() -> None:
-    """Hourly DB health check, run in-process by APScheduler."""
+    """Hourly DB size and volume metrics, run in-process by APScheduler."""
     log_db_health_check()
+
+
+@scheduler.task("cron", id="ingestion_watch", minute="*")
+def _scheduled_ingestion_watch() -> None:
+    """Watch for ingestion stalls every minute. The only source of stall alerts."""
+    check_ingestion_stall(INGESTION_WATCH_INTERVAL)
 
 
 _NAV_ACTIVE_BY_ENDPOINT = {
@@ -234,12 +248,18 @@ def clear_cache():
 
 @app.get("/status")
 def status():
-    """Return service status information."""
-    mqtt_client = get_mqtt_client()
-    mqtt_connected = mqtt_client.is_connected() if mqtt_client else False
+    """Return service status information.
+
+    The MQTT client runs as a separate systemd service, so this process cannot inspect
+    its socket. Ingestion health is inferred from how recently a reading landed in the DB.
+    """
+    since_last_reading = time_since_last_reading()
     return {
         "status": "ok",
-        "mqtt_connected": mqtt_connected,
+        "receiving_readings": since_last_reading is not None and since_last_reading < READING_STALE_AFTER,
+        "seconds_since_last_reading": (
+            round(since_last_reading.total_seconds(), 1) if since_last_reading is not None else None
+        ),
         "topic": TOPIC,
         "tasmota_url": TASMOTA_UI_URL,
         "flask_url": f"http://{SERVER_URL}:{FLASK_PORT}",

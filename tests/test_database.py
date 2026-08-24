@@ -8,6 +8,7 @@ import pytest
 from src.database import get_daily_energy_usage
 from src.database import get_moving_avg_daily_usage
 from src.database import get_stats
+from src.database import stall_alert_due
 from src.helpers import local_timezone
 
 
@@ -288,3 +289,30 @@ def test_latest_power_handles_empty_db(test_db):
         src.database.SessionLocal = original_session
 
     assert result == {"t": None, "w": None, "age_s": None, "stale": True}
+
+
+@pytest.mark.parametrize(
+    "gap_minutes,expected",
+    [
+        (1, False),  # blip filter: shorter than the first threshold
+        (2, True),  # first alert
+        (3, False),  # silent between thresholds
+        (15, True),
+        (60, True),
+        (61, False),
+        (360, True),
+        (1440, True),  # one day
+        (1441, False),
+        (2880, True),  # and daily thereafter
+    ],
+)
+def test_stall_alert_due_fires_once_per_threshold(gap_minutes, expected):
+    """Alerts fire on the tick that crosses a threshold, never on the ticks between."""
+    assert stall_alert_due(timedelta(minutes=gap_minutes), timedelta(minutes=1)) is expected
+
+
+def test_stall_alert_due_never_repeats_within_a_band():
+    """Walk a full day minute by minute: one alert per threshold, no duplicates."""
+    tick = timedelta(minutes=1)
+    fired = [m for m in range(1, 1441) if stall_alert_due(timedelta(minutes=m), tick)]
+    assert fired == [2, 15, 60, 360, 1440]

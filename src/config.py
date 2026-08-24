@@ -19,6 +19,8 @@ FLASK_PORT = _tool_config["flask_port"]
 MQTT_PORT = _tool_config["mqtt_port"]
 TOPIC = _tool_config["mqtt_topic"]
 TASMOTA_UI_URL = _tool_config["tasmota_ui_url"]
+GATEWAY_IP = _tool_config["gateway_ip"]
+ACCESS_POINT_IP = _tool_config["access_point_ip"]
 DATABASE_PATH = _tool_config["database_path"]
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 TUNNEL_NAME = _tool_config["tunnel_name"]
@@ -46,6 +48,8 @@ def config_cli(
     # MQTT settings
     mqtt_topic: bool = typer.Option(False, "--mqtt-topic", help=TOPIC),
     tasmota_ui_url: bool = typer.Option(False, "--tasmota-ui-url", help=TASMOTA_UI_URL),
+    gateway_ip: bool = typer.Option(False, "--gateway-ip", help=GATEWAY_IP),
+    access_point_ip: bool = typer.Option(False, "--access-point-ip", help=ACCESS_POINT_IP),
     # Database settings
     database_path: bool = typer.Option(False, "--database-path", help=_tool_config['database_path']),
     database_url: bool = typer.Option(False, "--database-url", help=DATABASE_URL),
@@ -64,6 +68,8 @@ def config_cli(
         typer.echo(f"mqtt_port={MQTT_PORT}")
         typer.echo(f"mqtt_topic={TOPIC}")
         typer.echo(f"tasmota_ui_url={TASMOTA_UI_URL}")
+        typer.echo(f"gateway_ip={GATEWAY_IP}")
+        typer.echo(f"access_point_ip={ACCESS_POINT_IP}")
         typer.echo(f"database_path={_tool_config['database_path']}")
         typer.echo(f"database_url={DATABASE_URL}")
         typer.echo(f"tunnel_name={TUNNEL_NAME}")
@@ -82,6 +88,8 @@ def config_cli(
         mqtt_port: MQTT_PORT,
         mqtt_topic: TOPIC,
         tasmota_ui_url: TASMOTA_UI_URL,
+        gateway_ip: GATEWAY_IP,
+        access_point_ip: ACCESS_POINT_IP,
         database_path: _tool_config["database_path"],
         database_url: DATABASE_URL,
         tunnel_name: TUNNEL_NAME,

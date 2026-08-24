@@ -21,6 +21,7 @@ from sqlalchemy.orm import sessionmaker
 from src.alerts import send_alert
 from src.config import DATABASE_PATH
 from src.config import DATABASE_URL
+from src.diagnostics import classify_stall
 from src.helpers import local_timezone
 from src.helpers import timed
 from src.observability import get_logger
@@ -310,15 +311,52 @@ def _format_timedelta(td: timedelta) -> str:
     return f"{minutes}m"
 
 
+# Minutes of silence at which to alert, then once a day for as long as it lasts. The first
+# is the blip filter: readings arrive every ~10s, so 2 minutes of nothing is a real fault,
+# while a brief WiFi drop resolves before it trips.
+STALL_ALERT_MINUTES = (2, 15, 60, 360, 1440)
+STALL_REPEAT_MINUTES = 1440
+
+
+def stall_alert_due(gap: timedelta, tick: timedelta) -> bool:
+    """True only on the tick where the outage crosses an escalation threshold.
+
+    Alerting on a *crossing* rather than a band means each threshold fires exactly once, so
+    this needs no memory of what it already sent — which matters because the alerter must
+    survive a service restart mid-outage without resetting its cadence, and because nothing
+    is shared between the Flask and MQTT processes anyway.
+    """
+    now_minutes = gap.total_seconds() / 60
+    previous_minutes = now_minutes - tick.total_seconds() / 60
+    thresholds = set(STALL_ALERT_MINUTES)
+    if now_minutes >= STALL_REPEAT_MINUTES:
+        thresholds.add(int(now_minutes // STALL_REPEAT_MINUTES) * STALL_REPEAT_MINUTES)
+    return any(previous_minutes < threshold <= now_minutes for threshold in thresholds)
+
+
+def check_ingestion_stall(tick: timedelta) -> None:
+    """Sole owner of stall alerting: detect silence, diagnose it, and escalate on a schedule.
+
+    `tick` is how often the caller runs this, and defines the window a threshold crossing is
+    detected in. Diagnosis probes the network, so it only runs on a crossing, never per tick.
+    """
+    gap = time_since_last_reading()
+    if gap is None:
+        return
+    metrics.gauge("db.ingestion.gap_seconds", gap.total_seconds())
+    if not stall_alert_due(gap, tick):
+        return
+    metrics.increment("db.health.stalled")
+    logger.warning("[stall] no readings for %s, diagnosing", _format_timedelta(gap))
+    send_alert(f"No readings for `{_format_timedelta(gap)}`\n{classify_stall()}")
+
+
 def log_db_health_check():
-    """Log the number of records in the DB as a health check."""
+    """Record DB size and volume metrics. Stall alerting belongs to check_ingestion_stall."""
     num_readings_last_hour = num_energy_readings_last_hour()
     metrics.gauge("db.readings.last_hour", num_readings_last_hour)
     if num_readings_last_hour < 300:
         metrics.increment("db.health.low_readings")
-        downtime = time_since_last_reading()
-        downtime_msg = f" (last reading {_format_timedelta(downtime)} ago)" if downtime is not None else ""
-        send_alert(f"Last hour: {num_readings_last_hour} readings{downtime_msg}")
     num_total_readings = num_total_energy_readings()
     metrics.gauge("db.readings.total", num_total_readings)
     db_size_mb = os.path.getsize(DATABASE_PATH) / (1024 * 1024)

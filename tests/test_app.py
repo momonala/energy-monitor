@@ -41,14 +41,13 @@ def test_index_serves_static_file(client):
     "endpoint,expected_keys",
     [
         ("/api/latest_reading", None),
-        ("/status", ["status", "mqtt_connected", "topic"]),
+        ("/status", ["status", "receiving_readings", "topic"]),
     ],
 )
 def test_api_endpoints_return_json(client, endpoint, expected_keys):
     """API endpoints return valid JSON."""
     with patch("src.app.latest_energy_reading", return_value={"timestamp": "2024-01-01T00:00:00"}):
-        with patch("src.app.get_mqtt_client") as mock_mqtt:
-            mock_mqtt.return_value.is_connected.return_value = True
+        with patch("src.app.time_since_last_reading", return_value=timedelta(seconds=5)):
             with patch("src.app.num_energy_readings_last_hour", return_value=100):
                 with patch("src.app.num_total_energy_readings", return_value=1000):
                     response = client.get(endpoint)
@@ -58,6 +57,24 @@ def test_api_endpoints_return_json(client, endpoint, expected_keys):
                     if expected_keys:
                         for key in expected_keys:
                             assert key in data
+
+
+@pytest.mark.parametrize(
+    "since_last,expected",
+    [
+        (timedelta(seconds=5), True),
+        (timedelta(hours=3), False),
+        (None, False),
+    ],
+)
+def test_status_reports_ingestion_health_from_reading_age(client, since_last, expected):
+    """`receiving_readings` tracks reading recency, not an unreachable cross-process client."""
+    with patch("src.app.latest_energy_reading", return_value=None):
+        with patch("src.app.time_since_last_reading", return_value=since_last):
+            with patch("src.app.num_energy_readings_last_hour", return_value=0):
+                with patch("src.app.num_total_energy_readings", return_value=0):
+                    data = client.get("/status").get_json()
+                    assert data["receiving_readings"] is expected
 
 
 def test_api_readings_accepts_time_params(client):

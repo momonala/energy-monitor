@@ -16,6 +16,7 @@ from src.config import TOPIC
 from src.database import format_mt681_summary
 from src.database import init_db
 from src.database import save_energy_reading
+from src.database import time_since_last_reading
 from src.observability import get_logger
 from src.observability import metrics
 
@@ -24,10 +25,7 @@ logger = get_logger(__name__)
 # Queue for database writes
 db_queue = queue.Queue()
 
-# Global MQTT client for status checks
-_mqtt_client: mqtt.Client | None = None
 _last_sensor_time: float | None = None
-_offline_since: float | None = None
 
 LWT_TOPIC = "tele/tasmota/LWT"
 SENSOR_TOPIC = "tele/tasmota/SENSOR"
@@ -45,24 +43,27 @@ def format_downtime(seconds: float) -> str:
 
 
 def handle_lwt_status(payload: str) -> None:
-    """Alert on device online/offline transitions, reporting downtime on recovery."""
-    global _offline_since
+    """Record device offline/online transitions and alert the all-clear on recovery.
+
+    Downtime is measured as the gap since the last stored reading rather than tracked in
+    memory, so a restart of this service mid-outage does not reset the clock.
+    """
     if payload == "Offline":
+        # No alert here: check_ingestion_stall owns outage alerting, and it diagnoses the
+        # cause rather than just reporting the symptom. Alerting from both would report the
+        # same outage twice from two processes that cannot coordinate.
         metrics.increment("mqtt.device.offline")
-        _offline_since = time.time()
-        send_alert("Hardware device went *offline*")
         return
     if payload == "Online":
         metrics.increment("mqtt.device.online")
-        if _offline_since is None:
+        downtime = time_since_last_reading()
+        if downtime is None:
             send_alert("Hardware device came *online*")
             return
-        downtime_s = time.time() - _offline_since
+        downtime_s = downtime.total_seconds()
         metrics.timing("mqtt.device.downtime_ms", downtime_s * 1000)
-        downtime = format_downtime(downtime_s)
-        logger.info(f"[recovery] device back online after {downtime}")
-        send_alert(f"Hardware device came *online* — down for `{downtime}`")
-        _offline_since = None
+        logger.info(f"[recovery] device back online after {format_downtime(downtime_s)}")
+        send_alert(f"Hardware device came *online* — down for `{format_downtime(downtime_s)}`")
 
 
 def db_worker():
@@ -79,11 +80,6 @@ def db_worker():
             logger.exception("Failed to save reading")
         finally:
             db_queue.task_done()
-
-
-def get_mqtt_client():
-    """Get the MQTT client instance."""
-    return _mqtt_client
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
@@ -154,24 +150,24 @@ if __name__ == "__main__":
     logger.info("Started DB worker thread")
 
     # Create and configure MQTT client with callback API version 2
-    _mqtt_client = mqtt.Client(
+    client = mqtt.Client(
         protocol=mqtt.MQTTv5,
         userdata=None,
         transport="tcp",
         callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
     )
-    _mqtt_client.on_connect = on_connect
-    _mqtt_client.on_disconnect = on_disconnect
-    _mqtt_client.on_message = on_message
+    client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
+    client.on_message = on_message
 
     logger.info(f"Connecting to {SERVER_URL}:{MQTT_PORT} ...")
-    _mqtt_client.connect(SERVER_URL, MQTT_PORT, keepalive=60)
+    client.connect(SERVER_URL, MQTT_PORT, keepalive=60)
     logger.info("MQTT client connected, starting message loop")
 
     # Use loop_forever() to keep the process alive
     try:
-        _mqtt_client.loop_forever()
+        client.loop_forever()
     except KeyboardInterrupt:
         logger.info("Shutting down MQTT client")
-        _mqtt_client.disconnect()
+        client.disconnect()
         db_queue.put(None)  # Signal worker to stop

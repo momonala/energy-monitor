@@ -44,6 +44,11 @@ database_path = "data/energy.db"
 mqtt_topic = "tele/tasmota/#"
 tasmota_ui_url = "http://192.168.2.116/"
 
+# Hops probed to classify an ingestion stall (see src/diagnostics.py). The access point
+# is the discriminator: a meter that fell off WiFi leaves it reachable, a LAN fault does not.
+gateway_ip = "192.168.2.1"
+access_point_ip = "192.168.2.102"
+
 # Cloudflare tunnel settings
 tunnel_name = "raspberrypi-tunnel"
 domain_suffix = "mnalavadi.org"
