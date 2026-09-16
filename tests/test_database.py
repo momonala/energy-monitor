@@ -56,7 +56,6 @@ def test_daily_energy_usage_marks_partial_days(test_db):
                     power_watts=500.0,
                     energy_in_kwh=100.0 + i * 0.5,
                     energy_out_kwh=0.0,
-                    raw_payload="{}",
                 )
             )
         session.commit()
@@ -216,7 +215,6 @@ def test_latest_power_returns_newest_reading(test_db):
             power_watts=999.0,
             energy_in_kwh=1999.0,
             energy_out_kwh=0.0,
-            raw_payload="{}",
         )
     )
     session.add(
@@ -226,7 +224,6 @@ def test_latest_power_returns_newest_reading(test_db):
             power_watts=1234.5,
             energy_in_kwh=2000.0,
             energy_out_kwh=0.0,
-            raw_payload="{}",
         )
     )
     session.commit()
@@ -259,7 +256,6 @@ def test_latest_power_flags_stale_reading(test_db):
             power_watts=300.0,
             energy_in_kwh=1000.0,
             energy_out_kwh=0.0,
-            raw_payload="{}",
         )
     )
     session.commit()

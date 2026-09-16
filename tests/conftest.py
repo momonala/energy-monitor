@@ -64,7 +64,6 @@ def sample_readings(test_db):
             power_phase_1_watts=200.0,
             power_phase_2_watts=150.0,
             power_phase_3_watts=150.0,
-            raw_payload='{"test": true}',
         )
         session.add(reading)
         # Store data we'll need after session closes

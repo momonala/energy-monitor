@@ -254,9 +254,11 @@ EnergyReading
 ├── energy_out_kwh: Float
 ├── power_phase_1_watts: Float
 ├── power_phase_2_watts: Float
-├── power_phase_3_watts: Float
-└── raw_payload: Text (JSON)
+└── power_phase_3_watts: Float
 ```
+
+The raw MQTT payload is not stored: every field of interest is parsed into a column, and the
+payload copy was 63% of the database before it was dropped.
 
 ## Key Concepts
 

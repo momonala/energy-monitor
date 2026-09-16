@@ -1,4 +1,3 @@
-import json
 import os
 import sqlite3
 from datetime import datetime
@@ -9,7 +8,6 @@ from sqlalchemy import Column
 from sqlalchemy import DateTime
 from sqlalchemy import Float
 from sqlalchemy import String
-from sqlalchemy import Text
 from sqlalchemy import create_engine
 from sqlalchemy import event
 from sqlalchemy import func
@@ -86,7 +84,6 @@ class EnergyReading(Base):
     power_phase_1_watts = Column(Float, nullable=True)
     power_phase_2_watts = Column(Float, nullable=True)
     power_phase_3_watts = Column(Float, nullable=True)
-    raw_payload = Column(Text, nullable=False)
 
     def __repr__(self):
         return (
@@ -172,7 +169,6 @@ def save_energy_reading(tasmota_payload: dict):
         power_phase_2_watts=fields["power_phase_2_watts"],
         power_phase_3_watts=fields["power_phase_3_watts"],
         timestamp=timestamp,
-        raw_payload=json.dumps(mt_payload),
     )
 
     try:
@@ -211,9 +207,8 @@ def latest_power() -> dict:
     """
     Get the most recent instantaneous power draw, for the live readout.
 
-    Selects two columns instead of hydrating the full row (the `raw_payload` blob is dead
-    weight when polling every few seconds). Returns nulls rather than raising on an empty DB
-    so the client has a single code path.
+    Selects only the two needed columns since this is polled every few seconds. Returns
+    nulls rather than raising on an empty DB so the client has a single code path.
     """
     with SessionLocal() as session:
         row = (
