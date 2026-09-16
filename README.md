@@ -103,9 +103,10 @@ energy-monitor/
 ├── tests/
 │   └── test_*.py       # Test files
 └── install/
-    ├── install.sh                              # Raspberry Pi setup script
-    ├── projects_energy-monitor.service         # systemd service for web app (includes APScheduler)
-    └── projects_energy-monitor_mqtt.service    # systemd service for MQTT client
+    ├── install.sh                                # Raspberry Pi setup script
+    ├── projects_energy-monitor.service           # systemd service for web app (includes APScheduler)
+    ├── projects_energy-monitor_mqtt.service      # systemd service for MQTT client
+    └── projects_energy-monitor_backup.{service,timer}  # daily DB backup
 ```
 
 ## Architecture
@@ -272,10 +273,13 @@ EnergyReading
 ## Storage
 
 
-| Path                | Purpose                           |
-| ------------------- | --------------------------------- |
-| `data/energy.db`    | SQLite database with all readings |
-| `data/energy.db.bk` | Backup copy (created hourly)      |
+| Path                            | Purpose                                             |
+| ------------------------------- | --------------------------------------------------- |
+| `data/energy.db`                | SQLite database with all readings                   |
+| `data/backups/energy-YYYYMMDD.db` | Daily WAL-safe backup (03:00, last 7 kept)        |
+
+Backups run via the `projects_energy-monitor_backup.timer` systemd timer, which calls
+`scripts/backup_db.sh` (`sqlite3 .backup` — safe against a live WAL database, unlike `cp`).
 
 
 ## Background Jobs

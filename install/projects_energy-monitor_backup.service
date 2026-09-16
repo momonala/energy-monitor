@@ -1,0 +1,8 @@
+[Unit]
+Description=Energy Monitor DB backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/mnalavadi/energy-monitor
+ExecStart=/usr/bin/bash scripts/backup_db.sh
+User=mnalavadi

@@ -35,10 +35,14 @@ echo "📋 Configuration:"
 echo "✅ Copying service files to systemd directory"
 sudo cp install/projects_${service_name}.service /lib/systemd/system/projects_${service_name}.service
 sudo cp install/projects_${mqtt_service_name}.service /lib/systemd/system/projects_${mqtt_service_name}.service
+sudo cp install/projects_${service_name}_backup.service /lib/systemd/system/projects_${service_name}_backup.service
+sudo cp install/projects_${service_name}_backup.timer /lib/systemd/system/projects_${service_name}_backup.timer
 
 echo "✅ Setting permissions for the service files"
 sudo chmod 644 /lib/systemd/system/projects_${service_name}.service
 sudo chmod 644 /lib/systemd/system/projects_${mqtt_service_name}.service
+sudo chmod 644 /lib/systemd/system/projects_${service_name}_backup.service
+sudo chmod 644 /lib/systemd/system/projects_${service_name}_backup.timer
 
 echo "✅ Reloading systemd daemon"
 sudo systemctl daemon-reload
@@ -47,6 +51,7 @@ sudo systemctl daemon-reexec
 echo "✅ Enabling the services"
 sudo systemctl enable projects_${service_name}.service
 sudo systemctl enable projects_${mqtt_service_name}.service
+sudo systemctl enable --now projects_${service_name}_backup.timer
 
 echo "✅ Starting the services"
 sudo systemctl restart projects_${service_name}.service
