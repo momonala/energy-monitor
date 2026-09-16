@@ -17,6 +17,7 @@ function readChartTheme() {
   return {
     power: getCssVar("--series-power"),
     powerFill: getCssVar("--series-power-fill"),
+    powerAvg: getCssVar("--series-power-avg"),
     energy: getCssVar("--series-energy"),
     dailyEnergy: getCssVar("--series-daily"),
     typicalDaily: getCssVar("--series-typical"),
@@ -28,6 +29,7 @@ function readChartTheme() {
     selectStroke: getCssVar("--series-select-stroke"),
     accent: getCssVar("--accent"),
     fontSans: getCssVar("--font-sans") || "system-ui, sans-serif",
+    fontMono: getCssVar("--font-mono") || "ui-monospace, monospace",
   };
 }
 
@@ -157,30 +159,38 @@ function formatReadingTime(ms) {
  * Uses a setTimeout chain rather than setInterval so a slow response cannot stack requests,
  * and pauses entirely while the tab is hidden — a backgrounded phone would otherwise poll all day.
  *
- * @param {HTMLElement} el - Container; gets `.live-power__value` and `__unit` children
- * @param {{intervalMs?: number, statusEl?: HTMLElement, metaHost?: HTMLElement}} options
+ * @param {HTMLElement|null} el - Container; gets `.live-power__value` and `__unit` children.
+ *   Pass null to poll without the built-in readout (status/onUpdate still fire).
+ * @param {{intervalMs?: number, statusEl?: HTMLElement, metaHost?: HTMLElement,
+ *          onUpdate?: (data: object|null) => void}} options
  *   metaHost receives the `.live-power__meta` block (`__time` + `__age`); defaults to `el`.
  *   Mobile parks it in the card header so the big figure keeps a line to itself.
+ *   onUpdate receives each payload (null on fetch failure) for custom rendering.
  * @returns {() => void} - Stop function
  */
-function startLivePower(el, { intervalMs = LIVE_POWER_INTERVAL_MS, statusEl = null, metaHost = null } = {}) {
-  if (!el) return () => {};
+function startLivePower(el, { intervalMs = LIVE_POWER_INTERVAL_MS, statusEl = null, metaHost = null, onUpdate = null } = {}) {
+  if (!el && !statusEl && !onUpdate) return () => {};
 
-  const valueEl = document.createElement("span");
-  valueEl.className = "live-power__value";
-  valueEl.textContent = "–";
-  const unitEl = document.createElement("span");
-  unitEl.className = "live-power__unit";
-  unitEl.textContent = "W";
-  const metaEl = document.createElement("span");
-  metaEl.className = "live-power__meta";
-  const timeEl = document.createElement("span");
-  timeEl.className = "live-power__time";
-  const ageEl = document.createElement("span");
-  ageEl.className = "live-power__age";
-  metaEl.replaceChildren(timeEl, ageEl);
-  el.replaceChildren(valueEl, unitEl);
-  (metaHost || el).appendChild(metaEl);
+  let valueEl = null;
+  let timeEl = null;
+  let ageEl = null;
+  if (el) {
+    valueEl = document.createElement("span");
+    valueEl.className = "live-power__value";
+    valueEl.textContent = "–";
+    const unitEl = document.createElement("span");
+    unitEl.className = "live-power__unit";
+    unitEl.textContent = "W";
+    const metaEl = document.createElement("span");
+    metaEl.className = "live-power__meta";
+    timeEl = document.createElement("span");
+    timeEl.className = "live-power__time";
+    ageEl = document.createElement("span");
+    ageEl.className = "live-power__age";
+    metaEl.replaceChildren(timeEl, ageEl);
+    el.replaceChildren(valueEl, unitEl);
+    (metaHost || el).appendChild(metaEl);
+  }
 
   let timer = null;
   let controller = null;
@@ -188,13 +198,16 @@ function startLivePower(el, { intervalMs = LIVE_POWER_INTERVAL_MS, statusEl = nu
   let stopped = false;
 
   function render(data) {
-    const watts = data && data.w;
-    valueEl.textContent = watts == null ? "–" : Fmt.n(watts, 0);
     const stale = !data || data.stale;
-    el.classList.toggle("is-stale", Boolean(stale));
-    timeEl.textContent = formatReadingTime(data && data.t);
-    ageEl.textContent = stale ? formatAge(data && data.age_s) : "";
+    if (el) {
+      const watts = data && data.w;
+      valueEl.textContent = watts == null ? "–" : Fmt.n(watts, 0);
+      el.classList.toggle("is-stale", Boolean(stale));
+      timeEl.textContent = formatReadingTime(data && data.t);
+      ageEl.textContent = stale ? formatAge(data && data.age_s) : "";
+    }
     if (statusEl) setConnectionStatus(statusEl, !stale);
+    if (onUpdate) onUpdate(data || null);
   }
 
   function schedule(delayMs) {
@@ -215,8 +228,9 @@ function startLivePower(el, { intervalMs = LIVE_POWER_INTERVAL_MS, statusEl = nu
       if (e.name === "AbortError") return;
       failures += 1;
       console.error("[livePower] fetch failed:", e);
-      el.classList.add("is-stale");
+      if (el) el.classList.add("is-stale");
       if (statusEl) setConnectionStatus(statusEl, false);
+      if (onUpdate) onUpdate(null);
       schedule(Math.min(intervalMs * 2 ** failures, LIVE_POWER_MAX_BACKOFF_MS));
     }
   }
@@ -358,89 +372,6 @@ function getBaseChartAxes(opts = {}) {
   ];
 }
 
-/**
- * Full desktop chart axes (labels + themed strokes).
- */
-function getDesktopChartAxes() {
-  const theme = readChartTheme();
-  const font = `11px ${theme.fontSans}`;
-  return [
-    {
-      stroke: theme.axis,
-      grid: { stroke: theme.grid },
-      ticks: { stroke: theme.ticks },
-      size: 56,
-      font,
-    },
-    {
-      label: "Watts",
-      stroke: theme.axis,
-      grid: { show: false },
-      size: 56,
-      font,
-    },
-    {
-      side: 1,
-      label: "Total kWh",
-      stroke: theme.energy,
-      grid: { show: false },
-      scale: "y2",
-      size: 56,
-      font,
-    },
-    {
-      side: 1,
-      label: "Daily kWh",
-      stroke: theme.dailyEnergy,
-      grid: { show: false },
-      scale: "y3",
-      size: 56,
-      font,
-    },
-  ];
-}
-
-/**
- * Desktop chart series definitions aligned with tokens.
- */
-function getDesktopChartSeries() {
-  const theme = readChartTheme();
-  return [
-    {},
-    {
-      label: "Live Power",
-      stroke: theme.power,
-      fill: theme.powerFill,
-      width: 1.5,
-      scale: "y",
-    },
-    {
-      label: "Daily Usage",
-      stroke: theme.dailyEnergy,
-      width: 2,
-      scale: "y3",
-    },
-    {
-      label: "Avg Power",
-      stroke: theme.rollingAvg,
-      width: 1.5,
-      scale: "y",
-    },
-    {
-      label: "Meter Reading",
-      stroke: theme.energy,
-      width: 1.5,
-      scale: "y2",
-    },
-    {
-      label: "30d Avg Daily Usage",
-      stroke: theme.typicalDaily,
-      width: 2,
-      scale: "y3",
-    },
-  ];
-}
-
 /** Compact chart axes for compare page side-by-side charts. */
 function getCompareChartAxes() {
   const theme = readChartTheme();
@@ -513,6 +444,8 @@ window.EnergyMonitor = {
   readChartTheme,
   Fmt,
   formatDuration,
+  formatReadingTime,
+  formatAge,
   fetchJson,
   setConnectionStatus,
   startLivePower,
@@ -521,8 +454,6 @@ window.EnergyMonitor = {
   loadCostPerKwh,
   saveCostPerKwh,
   getBaseChartAxes,
-  getDesktopChartAxes,
-  getDesktopChartSeries,
   getCompareChartAxes,
   getCompareChartSeries,
   getChartSelectOptions,

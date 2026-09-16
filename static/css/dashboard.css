@@ -1,70 +1,86 @@
 /* Energy Monitor — page layouts and chart-specific UI */
 
-/* ── Dashboard grid ──────────────────────────────────── */
+/* ── Dashboard ───────────────────────────────────────── */
 
 .dashboard {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding: 16px var(--page-gutter) 32px;
-}
-
-.dashboard-chart-layout {
-  display: grid;
-  grid-template-columns: 7fr 1.5fr 1.5fr;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-md);
-  grid-column: 1 / -1;
-  min-height: 0;
-  height: calc(100vh - var(--header-height) - 48px);
+  padding: var(--space-md) var(--page-gutter) 32px;
 }
 
-.chart-card {
+/* Toolbar: one global time context every widget obeys */
+.dash-toolbar {
   display: flex;
-  flex-direction: column;
-  padding: var(--space-md);
-  min-height: 0;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
 }
 
-.stats-card {
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-md);
+.toolbar-spacer {
+  flex: 1;
+}
+
+.cost-field {
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-sm);
-  overflow-y: auto;
-  min-height: 0;
+  white-space: nowrap;
 }
 
-.period-stat .value {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  white-space: normal;
-  font-variant-numeric: tabular-nums;
+.cost-field .control-input {
+  width: 5.5em;
 }
 
-.period-row {
+/* Tiles: one number per tile, comparison underneath */
+.tile-grid {
   display: grid;
-  grid-template-columns: auto 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: var(--space-sm);
-  align-items: baseline;
-  font-size: clamp(11px, 1.3vw, 14px);
-  font-family: var(--font-mono);
 }
 
-.period-header {
-  font-size: var(--text-meta);
-  font-weight: 500;
-  color: var(--label-tertiary);
-  margin-bottom: 2px;
+/* Widget grid: full-width stacked charts sharing one time axis */
+.widget-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-sm);
 }
 
-.period-label {
-  font-size: var(--text-label);
-  font-weight: 600;
-  color: var(--label-secondary);
-  min-width: 30px;
+/* transitions-dev: skeleton reveal (content side) — the chart fades in and
+   un-blurs once its loading overlay clears. `.is-resetting` makes the reverse
+   (back to loading) instant so reloads don't animate backwards. */
+.widget-body > div:first-child {
+  opacity: 0;
+  filter: blur(var(--reveal-blur));
+  transition:
+    opacity var(--reveal-dur) var(--reveal-ease),
+    filter  var(--reveal-dur) var(--reveal-ease);
+}
+
+.widget-body.is-revealed > div:first-child {
+  opacity: 1;
+  filter: blur(0);
+}
+
+.widget-body.is-resetting > div:first-child {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .widget-body > div:first-child {
+    transition: none !important;
+  }
+}
+
+.widget--power .widget-body {
+  height: 320px;
+}
+
+.widget--daily .widget-body,
+.widget--meter .widget-body {
+  height: 230px;
 }
 
 /* ── Chart area ────────────────────────────────────── */
@@ -88,60 +104,100 @@
   touch-action: none;
 }
 
+.uplot .u-select {
+  background: var(--series-select-fill);
+  border: 1px solid var(--series-select-stroke);
+}
+
+/* Cursor tooltip (dashboard widgets) — follows the crosshair */
+.chart-tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  background: var(--surface-raised);
+  border: 1px solid var(--separator-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop);
+  padding: 6px 9px;
+  pointer-events: none;
+  white-space: nowrap;
+  font-size: var(--text-meta);
+  color: var(--label);
+  /* Fade in on appear (display toggle restarts the animation). Opacity only —
+     transform is owned by the JS positioning. */
+  animation: chart-tip-in var(--tt-in-dur) var(--tt-in-ease);
+}
+
+@keyframes chart-tip-in {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-tip {
+    animation: none;
+  }
+}
+
+.chart-tip__title {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--label-secondary);
+  margin-bottom: 4px;
+}
+
+.chart-tip__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.7;
+}
+
+.chart-tip__label {
+  color: var(--label-secondary);
+}
+
+.chart-tip__value {
+  margin-left: auto;
+  padding-left: 14px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+/* Cursor readout box (compare page) — compact aligned rows, mono values */
 .hover-overlay {
   position: absolute;
   top: var(--space-sm);
   left: var(--chart-axis-offset);
-  background: var(--bg-overlay);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 0.5px solid var(--glass-border);
+  background: var(--surface-raised);
+  border: 1px solid var(--separator-strong);
   border-radius: var(--radius-sm);
   padding: var(--space-xs) var(--space-sm);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-pop);
   font-size: var(--text-meta);
   color: var(--label);
   pointer-events: none;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  opacity: 0.95;
+  z-index: 5;
 }
 
 .hover-row-new {
   display: grid;
-  grid-template-columns: 180px 1fr;
-  column-gap: var(--space-sm);
+  grid-template-columns: auto 1fr;
+  column-gap: var(--space-md);
   align-items: baseline;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .hover-label {
-  font-weight: 600;
-  min-width: 180px;
+  font-weight: 500;
 }
 
-.toolbar {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  padding-top: var(--space-md);
-}
-
-.toolbar-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-}
-
-.toolbar-row .btn {
-  flex: 1;
-  min-width: 0;
-}
-
-.uplot .u-select {
-  background: var(--series-select-fill);
-  border: 1px solid var(--series-select-stroke);
+.hover-row-new > span:last-child {
+  font-family: var(--font-mono);
+  text-align: right;
 }
 
 /* ── Compare page ──────────────────────────────────── */
@@ -179,10 +235,10 @@
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  padding: var(--space-md) var(--space-lg);
-  border: 0.5px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  background: var(--glass-bg);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--separator-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
   color: var(--label);
   font: inherit;
   cursor: pointer;
@@ -196,7 +252,8 @@
 
 .compare-period-field:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .compare-period-field-icon {
@@ -221,7 +278,9 @@
 }
 
 .compare-period-field-range {
-  font-size: var(--text-subtitle);
+  font-size: var(--text-body);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--label);
 }
 
@@ -239,15 +298,16 @@
   margin-top: var(--space-xs);
   z-index: 50;
   padding: var(--space-sm);
-  border-radius: var(--radius-sm);
-  border: 0.5px solid var(--glass-border);
-  background: var(--bg);
-  backdrop-filter: var(--glass-blur);
-  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--separator-strong);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-pop);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
+  transition:
+    opacity var(--duration-fast) var(--ease-smooth-out),
+    visibility var(--duration-fast) var(--ease-smooth-out);
 }
 
 .compare-calendar-dropdown:not(.collapsed) {
@@ -272,16 +332,16 @@
 
 .range-calendar-nav button {
   padding: 4px 8px;
-  border: 0.5px solid var(--glass-border);
+  border: 1px solid var(--separator-strong);
   border-radius: var(--radius-sm);
-  background: var(--glass-bg);
+  background: var(--surface-raised);
   color: var(--label);
   font-size: var(--text-body);
   cursor: pointer;
 }
 
 .range-calendar-month {
-  font-size: var(--text-subtitle);
+  font-size: var(--text-body);
   font-weight: 600;
   color: var(--label);
   min-width: 8em;
@@ -311,7 +371,8 @@
   align-items: center;
   justify-content: center;
   font-size: var(--text-body);
-  border-radius: var(--radius-xs);
+  font-variant-numeric: tabular-nums;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   border: none;
   background: transparent;
@@ -329,13 +390,13 @@
 }
 
 .range-calendar .day.in-range {
-  background: var(--accent-soft-strong);
+  background: var(--fill-active);
 }
 
 .range-calendar .day.start,
 .range-calendar .day.end {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-strong);
+  color: #ffffff;
 }
 
 .compare-loading {
@@ -350,7 +411,9 @@
   gap: var(--space-lg);
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.35s ease, transform 0.35s ease;
+  transition:
+    opacity var(--duration-slow) var(--ease-smooth-out),
+    transform var(--duration-slow) var(--ease-smooth-out);
 }
 
 .compare-results.visible {
@@ -372,7 +435,7 @@
 
 .compare-period-label {
   margin: 0 0 var(--space-sm);
-  font-size: var(--text-subtitle);
+  font-size: var(--text-section);
   font-weight: 600;
   color: var(--label-secondary);
 }
@@ -396,7 +459,7 @@
 .compare-period-stats {
   margin-top: var(--space-md);
   padding-top: var(--space-sm);
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--separator);
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-md);
@@ -404,7 +467,7 @@
 
 .compare-diff-heading {
   margin: 0 0 var(--space-sm);
-  font-size: var(--text-subtitle);
+  font-size: var(--text-section);
   font-weight: 600;
   color: var(--label-secondary);
   display: flex;
@@ -418,11 +481,11 @@
 }
 
 .compare-diff-arrow.diff-arrow-less {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .compare-diff-arrow.diff-arrow-more {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .compare-diff-stats {
@@ -433,11 +496,11 @@
 }
 
 .compare-diff-stats .diff-value-less {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .compare-diff-stats .diff-value-more {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* ── Mobile ────────────────────────────────────────── */
@@ -489,7 +552,7 @@
 .mobile-controls > * {
   flex: 1;
   min-height: 44px;
-  font-size: var(--text-body);
+  font-size: var(--text-subtitle);
 }
 
 .js-chart-content {
@@ -525,9 +588,9 @@
   min-width: 60px;
   font-size: var(--text-label);
   font-weight: 600;
-  border: 0.5px solid var(--glass-border);
-  border-radius: var(--radius-pill);
-  background: var(--glass-bg);
+  border: 1px solid var(--separator-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   font-family: inherit;
@@ -560,7 +623,7 @@
 }
 
 .mobile-stat-row + .mobile-stat-row {
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--separator);
 }
 
 .mobile-stat-row-3col {
@@ -582,14 +645,14 @@
 }
 
 .mobile-stat-label {
-  font-size: var(--text-body);
+  font-size: var(--text-subtitle);
   font-weight: 500;
   color: var(--label-secondary);
 }
 
 .mobile-stat-value {
-  font-size: var(--text-stat);
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
 }
@@ -604,49 +667,21 @@
   text-decoration: none;
   font-size: var(--text-body);
   padding: var(--space-sm) var(--space-md);
-  border: 0.5px solid var(--glass-border);
+  border: 1px solid var(--separator-strong);
   border-radius: var(--radius-sm);
 }
 
 .mobile-desktop-link:hover {
   color: var(--label);
-  border-color: var(--accent-ring-border);
+  border-color: var(--label-tertiary);
   background: var(--fill-hover);
 }
 
 /* ── Responsive ────────────────────────────────────── */
 
-@media (max-width: 1200px) {
-  .dashboard-chart-layout {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr auto;
-    height: auto;
-  }
-
-  .chart-card {
-    grid-column: 1 / -1;
-    min-height: 400px;
-  }
-}
-
 @media (max-width: 900px) {
-  .dashboard,
   .compare-charts-row {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 600px) {
-  .dashboard-chart-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .chart-card {
-    min-height: 300px;
-  }
-
-  .stats-card {
-    max-height: 300px;
   }
 }
 

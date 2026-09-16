@@ -4,7 +4,6 @@
 {% block page_title %}Dashboard{% endblock %}
 
 {% block header_controls %}
-<span id="live-power" class="live-power" role="status" aria-live="polite"></span>
 <span id="status-connection" class="header-status header-status--pending" role="status">
   <span class="header-status__dot" aria-hidden="true"></span>
   <span class="header-status__label">connecting…</span>
@@ -12,201 +11,141 @@
 {% endblock %}
 
 {% block content %}
-<div class="dashboard-chart-layout">
-  <section class="chart-card card">
-    <div class="chart-wrapper">
-      <div id="chart"></div>
-      <div id="chart-loading" class="chart-loading">Loading chart…</div>
-      <div id="hover-overlay" class="hover-overlay">
-        <div class="hover-row-new">
-          <span class="hover-label">Time:</span>
-          <span id="hover-time">–</span>
-        </div>
-        <div class="hover-row-new">
-          <span class="hover-label text-energy">Meter reading (kWh):</span>
-          <span id="hover-total-energy">–</span>
-        </div>
-        <div class="hover-row-new">
-          <span class="hover-label text-daily-energy">Daily usage (kWh):</span>
-          <span id="hover-daily-energy">–</span>
-        </div>
-        <div class="hover-row-new">
-          <span id="hover-typical-label" class="hover-label text-avg">30d avg daily usage (kWh):</span>
-          <span id="hover-typical-daily-energy">–</span>
-        </div>
-        <div class="hover-row-new">
-          <span class="hover-label text-power">Live power (W):</span>
-          <span id="hover-power">–</span>
-        </div>
-        <div class="hover-row-new">
-          <span class="hover-label text-rolling-avg">Avg power (W):</span>
-          <span id="hover-rolling-avg">–</span>
-        </div>
-      </div>
+<div class="dash-toolbar" role="toolbar" aria-label="Time range and dashboard options">
+  <div class="segmented t-tabs" role="group" aria-label="Time range">
+    <span class="t-tabs-pill" aria-hidden="true"></span>
+    <button type="button" class="btn" data-range="hour">1h</button>
+    <button type="button" class="btn" data-range="6h">6h</button>
+    <button type="button" class="btn" data-range="day">1d</button>
+    <button type="button" class="btn is-active" data-range="week">7d</button>
+    <button type="button" class="btn" data-range="month">30d</button>
+    <button type="button" class="btn" data-range="year">1y</button>
+  </div>
+  <button type="button" id="btn-live" class="btn hidden">Back to live</button>
+  <span class="toolbar-spacer"></span>
+  <label class="cost-field field-label" for="cost-input">€/kWh
+    <input id="cost-input" class="control-input" type="text" inputmode="decimal" value="0.3102" />
+  </label>
+  <button type="button" id="btn-refresh" class="btn">Refresh</button>
+</div>
+
+<div class="tile-grid">
+  <div class="tile card">
+    <div class="tile-label">Live power</div>
+    <div class="tile-value tile-value--power"><span id="tile-live-power" class="t-digit-group">–</span><span class="tile-unit">W</span><span id="tile-live-time" class="tile-live-meta">–</span></div>
+    <div class="tile-sub">
+      <span><span id="tile-meter-total">–</span> kWh</span>
     </div>
-    <div class="toolbar">
-      <div class="toolbar-row view-toggle" role="group" aria-label="Chart series">
-        <button id="btn-toggle-power" class="btn btn-trace btn-trace-power" data-series="1" aria-pressed="true">Live power</button>
-        <button id="btn-toggle-daily" class="btn btn-trace btn-trace-daily" data-series="2" aria-pressed="true">Daily usage</button>
-        <button id="btn-toggle-avg-power" class="btn btn-trace btn-trace-avg-power" data-series="3" aria-pressed="true">Avg power</button>
-        <button id="btn-toggle-meter" class="btn btn-trace btn-trace-meter" data-series="4" aria-pressed="true">Meter reading</button>
-        <button id="btn-toggle-typical" class="btn btn-trace btn-trace-typical" data-series="5" aria-pressed="true">30d avg</button>
+  </div>
+  <div class="tile card">
+    <div class="tile-label">Power, selected range</div>
+    <div class="tile-value"><span id="tile-avg-power">–</span><span class="tile-unit">W avg</span></div>
+    <div class="tile-sub">
+      <span><span class="tile-sub-key">min</span> <span id="tile-min-power">–</span> W</span>
+      <span><span class="tile-sub-key">max</span> <span id="tile-max-power">–</span> W</span>
+    </div>
+  </div>
+  <div class="tile card">
+    <div class="tile-label">Energy used, selected range</div>
+    <div class="tile-value"><span id="tile-energy">–</span><span class="tile-unit">kWh</span></div>
+    <div class="tile-sub">
+      <span>€<span id="tile-energy-cost">–</span></span>
+      <span id="tile-energy-delta"></span>
+    </div>
+  </div>
+  <div class="tile card">
+    <div class="tile-label">Last 24 hours</div>
+    <div class="tile-value"><span id="tile-day">–</span><span class="tile-unit">kWh</span></div>
+    <div class="tile-sub">
+      <span>€<span id="tile-day-cost">–</span></span>
+      <span id="tile-day-delta"></span>
+    </div>
+  </div>
+  <div class="tile card">
+    <div class="tile-label">Last 7 days</div>
+    <div class="tile-value"><span id="tile-week">–</span><span class="tile-unit">kWh</span></div>
+    <div class="tile-sub">
+      <span>€<span id="tile-week-cost">–</span></span>
+      <span id="tile-week-delta"></span>
+    </div>
+  </div>
+  <div class="tile card">
+    <div class="tile-label">Last 30 days</div>
+    <div class="tile-value"><span id="tile-month">–</span><span class="tile-unit">kWh</span></div>
+    <div class="tile-sub">
+      <span>€<span id="tile-month-cost">–</span></span>
+      <span id="tile-month-delta"></span>
+    </div>
+  </div>
+</div>
+
+<div class="widget-grid">
+  <section class="widget card widget--power" aria-label="Power over time">
+    <header class="widget-head">
+      <h2>Power</h2>
+      <div class="widget-legend" role="group" aria-label="Power chart series">
+        <button type="button" class="legend-chip" data-series="1" aria-pressed="true">
+          <span class="legend-swatch swatch-power" aria-hidden="true"></span>
+          Live power
+        </button>
+        <button type="button" class="legend-chip" data-series="2" aria-pressed="true">
+          <span class="legend-swatch swatch-power-avg" aria-hidden="true"></span>
+          <span id="lv-avg-label">Avg power (1h)</span>
+        </button>
       </div>
-      <div class="toolbar-row">
-        <button id="btn-refresh" type="button" class="btn">Refresh</button>
-        <button id="btn-reset" type="button" class="btn">Reset</button>
-        <button id="btn-toggle-scale" type="button" class="btn" title="Toggle power axis scale">Auto</button>
-        <button id="btn-toggle-avg-mode" type="button" class="btn" title="Toggle between 30d moving average and total average">30d</button>
-        <select id="time-range-select" class="btn control-select" aria-label="Time range">
-          <option value="">Range</option>
-          <option value="hour">Hour</option>
-          <option value="day">Day</option>
-          <option value="week">Week</option>
-          <option value="month">Month</option>
-          <option value="year">Year</option>
-        </select>
+      <div class="widget-tools">
+        <button type="button" id="btn-toggle-scale" class="btn" title="Toggle power axis scale">Auto scale</button>
       </div>
+    </header>
+    <div class="widget-body">
+      <div id="chart-power"></div>
+      <div id="loading-power" class="chart-loading"><span class="spinner" aria-hidden="true"></span><span class="visually-hidden">Loading…</span></div>
     </div>
   </section>
 
-  <aside class="stats-card card">
-    <h2 class="stats-title">Selection stats</h2>
-    <div class="stats-grid">
-      <div class="stat">
-        <div class="label">Cost €/kWh</div>
-        <div class="value">
-          <input id="cost-input" class="control-input" type="text" value="0.3102" />
-        </div>
+  <section class="widget card widget--daily" aria-label="Daily energy usage">
+    <header class="widget-head">
+      <h2>Daily usage</h2>
+      <div class="widget-legend" role="group" aria-label="Daily usage chart series">
+        <button type="button" class="legend-chip" data-series="1" aria-pressed="true">
+          <span class="legend-swatch swatch-daily" aria-hidden="true"></span>
+          Daily usage
+        </button>
+        <button type="button" class="legend-chip" data-series="2" aria-pressed="true">
+          <span class="legend-swatch swatch-typical" aria-hidden="true"></span>
+          <span id="lv-typical-label">30d avg</span>
+        </button>
       </div>
-      <div class="stat period-stat">
-        <div class="label">Energy &amp; cost</div>
-        <div class="value">
-          <div class="period-row period-header">
-            <span class="period-label"></span>
-            <span class="text-energy">Real</span>
-            <span class="text-avg">Typical</span>
-          </div>
-          <div class="period-row">
-            <span class="period-label text-energy">kWh</span>
-            <span class="text-energy"><span id="stat-energy">–</span></span>
-            <span class="text-avg"><span id="stat-avg-energy">–</span></span>
-          </div>
-          <div class="period-row">
-            <span class="period-label">€</span>
-            <span><span id="stat-cost-range">–</span></span>
-            <span class="text-avg-light"><span id="stat-avg-cost">–</span></span>
-          </div>
-        </div>
+      <div class="widget-tools">
+        <button type="button" id="btn-toggle-avg-mode" class="btn" title="Toggle between 30-day moving average and all-time average">30d avg</button>
       </div>
-      <div class="stat period-stat">
-        <div class="label">Power stats</div>
-        <div class="value">
-          <div class="period-row">
-            <span class="period-label text-power">Max (W)</span>
-            <span class="text-power"><span id="stat-max">–</span></span>
-          </div>
-          <div class="period-row">
-            <span class="period-label text-power">Avg (W)</span>
-            <span class="text-power"><span id="stat-avg">–</span></span>
-          </div>
-          <div class="period-row">
-            <span class="period-label text-power">Min (W)</span>
-            <span class="text-power"><span id="stat-min">–</span></span>
-          </div>
-        </div>
-      </div>
-      <div class="stat">
-        <div class="label">Data points</div>
-        <div class="value"><span id="stat-count">–</span></div>
-      </div>
-      <div class="stat">
-        <div class="label">Range</div>
-        <div class="value"><span id="stat-range">–</span></div>
-      </div>
+    </header>
+    <div class="widget-body">
+      <div id="chart-daily"></div>
+      <div id="loading-daily" class="chart-loading"><span class="spinner" aria-hidden="true"></span><span class="visually-hidden">Loading…</span></div>
     </div>
-  </aside>
+  </section>
 
-  <aside class="stats-card card">
-    <h2 class="stats-title">Period summary</h2>
-    <div class="stats-grid">
-      <div class="stat period-stat">
-        <div class="label">Total</div>
-        <div class="value">
-          <div class="period-row">
-            <span class="period-label text-energy">kWh</span>
-            <span class="text-energy"><span id="stat-current-consumption">–</span></span>
-          </div>
-          <div class="period-row">
-            <span class="period-label">€</span>
-            <span><span id="stat-total-cost">–</span></span>
-          </div>
-        </div>
+  <section class="widget card widget--meter" aria-label="Cumulative meter reading">
+    <header class="widget-head">
+      <h2>Meter reading</h2>
+      <div class="widget-legend" role="group" aria-label="Meter chart series">
+        <button type="button" class="legend-chip" data-series="1" aria-pressed="true">
+          <span class="legend-swatch swatch-meter" aria-hidden="true"></span>
+          Meter
+        </button>
       </div>
-      <div class="stat period-stat">
-        <div class="label">Last 30 days</div>
-        <div class="value">
-          <div class="period-row period-header">
-            <span class="period-label"></span>
-            <span class="text-energy">Real</span>
-            <span class="text-avg">Typical</span>
-          </div>
-          <div class="period-row">
-            <span class="period-label text-energy">kWh</span>
-            <span class="text-energy"><span id="stat-month-energy">–</span></span>
-            <span class="text-avg"><span id="stat-month-avg-energy">–</span></span>
-          </div>
-          <div class="period-row">
-            <span class="period-label">€</span>
-            <span><span id="stat-month-cost">–</span></span>
-            <span class="text-avg-light"><span id="stat-month-avg-cost">–</span></span>
-          </div>
-        </div>
+      <div class="widget-tools">
       </div>
-      <div class="stat period-stat">
-        <div class="label">Last 7 days</div>
-        <div class="value">
-          <div class="period-row period-header">
-            <span class="period-label"></span>
-            <span class="text-energy">Real</span>
-            <span class="text-avg">Typical</span>
-          </div>
-          <div class="period-row">
-            <span class="period-label text-energy">kWh</span>
-            <span class="text-energy"><span id="stat-week-energy">–</span></span>
-            <span class="text-avg"><span id="stat-week-avg-energy">–</span></span>
-          </div>
-          <div class="period-row">
-            <span class="period-label">€</span>
-            <span><span id="stat-week-cost">–</span></span>
-            <span class="text-avg-light"><span id="stat-week-avg-cost">–</span></span>
-          </div>
-        </div>
-      </div>
-      <div class="stat period-stat">
-        <div class="label">Last day</div>
-        <div class="value">
-          <div class="period-row period-header">
-            <span class="period-label"></span>
-            <span class="text-energy">Real</span>
-            <span class="text-avg">Typical</span>
-          </div>
-          <div class="period-row">
-            <span class="period-label text-energy">kWh</span>
-            <span class="text-energy"><span id="stat-day-energy">–</span></span>
-            <span class="text-avg"><span id="stat-day-avg-energy">–</span></span>
-          </div>
-          <div class="period-row">
-            <span class="period-label">€</span>
-            <span><span id="stat-day-cost">–</span></span>
-            <span class="text-avg-light"><span id="stat-day-avg-cost">–</span></span>
-          </div>
-        </div>
-      </div>
+    </header>
+    <div class="widget-body">
+      <div id="chart-meter"></div>
+      <div id="loading-meter" class="chart-loading"><span class="spinner" aria-hidden="true"></span><span class="visually-hidden">Loading…</span></div>
     </div>
-  </aside>
+  </section>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/app.js"></script>
+<script src="{{ static_url('app.js') }}"></script>
 {% endblock %}

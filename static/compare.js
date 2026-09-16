@@ -197,18 +197,22 @@
     };
   }
 
-  function calculateRollingAvg(yVals) {
-    if (yVals.length === 0) return [];
-    const alpha = 0.0001;
+  /* Trailing 1-hour mean, matching the dashboard's "Avg power (1h)". */
+  function calculateRollingAvg(xVals, yVals) {
+    const WINDOW_SEC = 3600;
     const out = new Array(yVals.length).fill(null);
-    let ema = null;
+    let lo = 0;
+    let sum = 0;
+    let count = 0;
     for (let i = 0; i < yVals.length; i++) {
-      if (yVals[i] != null && Number.isFinite(yVals[i])) {
-        ema = ema === null ? yVals[i] : alpha * yVals[i] + (1 - alpha) * ema;
-        out[i] = ema;
-      } else if (ema !== null) {
-        out[i] = ema;
+      sum += yVals[i];
+      count++;
+      while (xVals[lo] < xVals[i] - WINDOW_SEC) {
+        sum -= yVals[lo];
+        count--;
+        lo++;
       }
+      out[i] = sum / count;
     }
     return out;
   }
@@ -217,7 +221,7 @@
     const { xVals, yVals, eVals } = processReadingsData(Array.isArray(rows) ? rows : []);
     const dailyEnergyVals = alignDailyDataToTimestamps(dailyData || [], xVals);
     const typicalDailyEnergyVals = alignDailyDataToTimestamps(movingAvgData || [], xVals);
-    const rollingAvgVals = calculateRollingAvg(yVals);
+    const rollingAvgVals = calculateRollingAvg(xVals, yVals);
     return { xVals, yVals, eVals, dailyEnergyVals, typicalDailyEnergyVals, rollingAvgVals };
   }
 

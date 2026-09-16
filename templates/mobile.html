@@ -8,7 +8,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 {% endblock %}
 
-{% block bg_video %}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% block sidebar_script %}{% endblock %}
 
@@ -48,7 +47,7 @@
 <section id="mobile-chart-content" class="card js-chart-content">
   <div class="mobile-chart-wrapper">
     <div id="chart"></div>
-    <div id="chart-loading" class="chart-loading">Loading chart…</div>
+    <div id="chart-loading" class="chart-loading"><span class="spinner" aria-hidden="true"></span><span class="visually-hidden">Loading…</span></div>
   </div>
   <div class="mobile-chart-toggles view-toggle" role="group" aria-label="Chart series">
     <button type="button" class="mobile-toggle mobile-toggle-power active btn" data-series="1" aria-pressed="true">Power</button>
@@ -134,5 +133,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/mobile.js"></script>
+<script src="{{ static_url('mobile.js') }}"></script>
 {% endblock %}

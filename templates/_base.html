@@ -4,21 +4,22 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Energy Monitor{% endblock %}</title>
-  <link rel="stylesheet" href="/static/styles.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
+  {# Parallel links, not an @import chain — imports load serially.
+     The font preload stays unversioned so it byte-matches the url() in base.css. #}
+  <link rel="preload" href="/static/fonts/commit-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="{{ static_url('css/motion.css') }}" />
+  <link rel="stylesheet" href="{{ static_url('css/tokens.css') }}" />
+  <link rel="stylesheet" href="{{ static_url('css/base.css') }}" />
+  <link rel="stylesheet" href="{{ static_url('css/components.css') }}" />
+  <link rel="stylesheet" href="{{ static_url('css/dashboard.css') }}" />
+  <link rel="stylesheet" href="{{ static_url('vendor/uPlot.min.css') }}" />
+  <script src="{{ static_url('vendor/uPlot.iife.min.js') }}"></script>
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png" />
   <link rel="shortcut icon" href="/static/favicon.ico" />
   {% block head_extra %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}" data-page="{{ active_page | default('') }}">
-  {% block bg_video %}
-  <video class="bg-video" autoplay loop muted playsinline aria-hidden="true"
-         oncanplay="this.playbackRate=0.5">
-    <source src="/static/abstract-background.webm" type="video/webm" />
-  </video>
-  {% endblock %}
   {% block sidebar %}
   <nav class="sidebar" id="sidebar" aria-label="Navigation">
     <div class="sidebar-brand">
@@ -55,7 +56,7 @@
   </main>
   {% endblock %}
 
-  <script src="/static/shared.js"></script>
+  <script src="{{ static_url('shared.js') }}"></script>
   {% block scripts %}{% endblock %}
   {% block sidebar_script %}
   <script>

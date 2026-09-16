@@ -1,5 +1,0 @@
-/* Energy Monitor — stylesheet entry point */
-@import url("/static/css/tokens.css");
-@import url("/static/css/base.css");
-@import url("/static/css/components.css");
-@import url("/static/css/dashboard.css");

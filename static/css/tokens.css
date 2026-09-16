@@ -1,112 +1,106 @@
-/* Spyglass-aligned design tokens — Liquid Glass dark theme */
+/* Design tokens — matte dark instrument panel.
+   One deliberate look: opaque surfaces, hairline borders, chrome in neutral
+   grays. Saturated color is reserved for data series, status, and deltas. */
 
 :root {
-  /* Backgrounds */
-  --bg: #16171a;
-  --surface-raised: rgba(255, 255, 255, 0.06);
-  --surface-inset: rgba(0, 0, 0, 0.25);
-  --fill: rgba(255, 255, 255, 0.07);
+  /* Surfaces — opaque, no translucency */
+  --bg: #101114;
+  --surface: #17191d;
+  --surface-raised: #1e2126;
+  --surface-inset: #0d0e10;
 
   /* Borders */
-  --separator: rgba(255, 255, 255, 0.1);
+  --separator: #262a31;
+  --separator-strong: #343a44;
 
-  /* Accent & status */
-  --accent: #0a84ff;
-  --accent-soft: rgba(10, 132, 255, 0.12);
-  --accent-soft-strong: rgba(10, 132, 255, 0.2);
-  --accent-sweep: rgba(10, 132, 255, 0.35);
-  --danger: #ff453a;
-  --danger-soft: rgba(255, 69, 58, 0.08);
-  --danger-border: rgba(255, 69, 58, 0.4);
-  --danger-text: #ff6961;
-  --success: #30d158;
-  --success-soft: rgba(48, 209, 88, 0.12);
-  --warning: #ffd60a;
-  --warning-soft: rgba(255, 214, 10, 0.12);
-  --warning-border: rgba(255, 214, 10, 0.4);
+  /* Text — tertiary stays >= 4.5:1 on --surface (WCAG AA) */
+  --label: #e7e9ee;
+  --label-secondary: #a8adb8;
+  --label-tertiary: #8f95a1;
 
-  /* Text — tertiary stays >= 4.5:1 on --bg (WCAG AA) */
-  --label: rgba(255, 255, 255, 0.92);
-  --label-secondary: rgba(255, 255, 255, 0.7);
-  --label-tertiary: rgba(255, 255, 255, 0.55);
+  /* Interactive fills (opaque steps of the surface scale) */
+  --fill-hover: #22252b;
+  --fill-active: #282c33;
 
-  /* Interactive fills */
-  --fill-hover: rgba(255, 255, 255, 0.12);
-  --fill-active: rgba(255, 255, 255, 0.16);
+  /* Accent — links and focus rings only; data owns its own colors */
+  --accent: #3987e5;
+  --accent-strong: #1c5cab; /* filled selection surfaces — white text clears AA on this step */
+  --accent-ring: rgba(57, 135, 229, 0.35);
 
-  /* Translucent surfaces */
-  --bg-translucent: rgba(22, 23, 26, 0.5);
-  --bg-overlay: rgba(22, 23, 26, 0.85);
-
-  /* Focus ring */
-  --accent-ring-border: rgba(10, 132, 255, 0.7);
-  --accent-ring: rgba(10, 132, 255, 0.18);
-
-  /* Glass system */
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-bg-deep: rgba(0, 0, 0, 0.25);
-  --glass-border: rgba(255, 255, 255, 0.13);
-  --glass-border-inner: rgba(255, 255, 255, 0.07);
-  --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  --glass-blur: blur(24px) saturate(180%);
+  /* Status & deltas — marks use the base step, text uses the lighter step */
+  --success: #0ca30c;
+  --success-text: #31c48d;
+  --danger: #d03b3b;
+  --danger-text: #e66767;
+  --danger-soft: rgba(208, 59, 59, 0.1);
+  --danger-border: rgba(208, 59, 59, 0.45);
+  --warning: #fab219;
+  --warning-soft: rgba(250, 178, 25, 0.1);
+  --warning-border: rgba(250, 178, 25, 0.4);
 
   /* Layout */
   --sidebar-width: 200px;
   --sidebar-collapsed-width: 40px;
-  --page-gutter: clamp(1rem, 2.5vw, 2.5rem);
-  --header-height: 52px;
+  --page-gutter: clamp(1rem, 2.5vw, 2rem);
   --chart-axis-offset: 95px;
 
-  /* Typography — system stack: dense numeric UI at small sizes, no webfont request.
-     11px floor for functional text, 14px body, real jump to the title step. */
+  /* Typography.
+     Sans: system stack — the type load is functional labels at 11–13px; a
+     neutral workhorse, no webfont request for chrome.
+     Mono: Commit Mono (self-hosted) — tabular figures and a distinct voice for
+     every measurement: tile values, axis ticks, tooltips, table numbers. */
   --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
-  --text-title: 22px;
-  --text-stat: 18px;
+  --font-mono: "Commit Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-title: 20px;
+  --text-stat: 26px;
   --text-subtitle: 15px;
-  --text-section: 14px;
-  --text-body: 14px;
+  --text-section: 13px;
+  --text-body: 13px;
   --text-label: 12px;
   --text-meta: 11px;
   --text-caption: 11px;
 
-  /* Radii */
-  --radius-xs: 6px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-pill: 999px;
+  /* Radii — two values across the product */
+  --radius-sm: 4px;
+  --radius-md: 8px;
 
-  /* Spacing */
+  /* Spacing — 4px grid */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 12px;
   --space-lg: 16px;
-  --space-xl: 20px;
+  --space-xl: 24px;
 
-  /* Shadows — cards commit to a defined edge; shadow stays close and subtle */
-  --shadow-card: var(--glass-specular), 0 1px 4px rgba(0, 0, 0, 0.25);
+  /* Elevation — panels commit to a defined edge (border, no shadow);
+     only floating layers (popovers, tooltips) get a shadow */
+  --shadow-pop: 0 4px 16px rgba(0, 0, 0, 0.45);
 
-  /* Chart series (semantic — used by uPlot via shared.js) */
-  --series-power: #60a5fa;
-  --series-power-fill: rgba(96, 165, 250, 0.12);
-  --series-energy: #fb923c;
-  --series-daily: #fbbf24;
-  --series-typical: #a78bfa;
-  --series-rolling: #60a5fa;
-  --series-grid: rgba(255, 255, 255, 0.05);
-  --series-axis: rgba(255, 255, 255, 0.7);
-  --series-ticks: rgba(255, 255, 255, 0.12);
-  --series-select-fill: rgba(10, 132, 255, 0.15);
-  --series-select-stroke: #0a84ff;
+  /* Chart series (validated categorical slots for the dark surface;
+     read by uPlot via shared.js) */
+  --series-power: #3987e5;
+  --series-power-fill: rgba(57, 135, 229, 0.1);
+  --series-power-avg: #86b6ef;
+  --series-energy: #199e70;
+  --series-daily: #d95926;
+  --series-typical: #898781;
+  --series-rolling: var(--series-power-avg);
+  --series-grid: #1e2025;
+  --series-axis: #8a8f99;
+  --series-ticks: #2c2f35;
+  --series-select-fill: rgba(231, 233, 238, 0.08);
+  --series-select-stroke: #8f95a1;
 
-  --bg-video-opacity: 0.35;
+  /* transitions-dev theme overrides (motion.css loads first; these win) */
+  --tabs-bar-bg: var(--surface-inset);
+  --tabs-pill-bg: var(--surface-raised);
+  --tabs-text-muted: var(--label-secondary);
+  --tabs-text-active: var(--label);
 
   /* Legacy aliases (chart text utilities) */
   --color-energy: var(--series-energy);
   --color-power: var(--series-power);
   --color-avg: var(--series-typical);
-  --color-avg-light: #c4b5fd;
+  --color-avg-light: #a3a19b;
   --color-rolling-avg: var(--series-rolling);
   --color-daily-energy: var(--series-daily);
 }

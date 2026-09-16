@@ -1,937 +1,981 @@
+/**
+ * Dashboard: one global time context, three cursor-synced chart widgets
+ * (power, daily usage, meter), and stat tiles that follow the selected window.
+ *
+ * Interaction model:
+ *  - Preset buttons (1h…1y) set a live window whose right edge follows now.
+ *  - Brushing any chart selects a custom window: all charts rescale together
+ *    and the window tiles recompute. "Back to live" (or double-click) returns
+ *    to the active preset.
+ */
 (() => {
   const {
     Fmt,
-    formatDuration,
+    formatAge,
     fetchJson,
     setConnectionStatus,
     startLivePower,
-    alignDailyDataToTimestamps,
+    getDateKey,
     loadCostPerKwh,
     saveCostPerKwh,
-    getDesktopChartAxes,
-    getDesktopChartSeries,
+    readChartTheme,
     getChartSelectOptions,
     processReadingsData,
   } = window.EnergyMonitor;
 
-  const chartEl = document.getElementById("chart");
-  const chartLoading = document.getElementById("chart-loading");
+  // ── DOM ─────────────────────────────────────────────────────────────────
   const statusConn = document.getElementById("status-connection");
-  const livePowerEl = document.getElementById("live-power");
-  const statEnergy = document.getElementById("stat-energy");
-  const statAvg = document.getElementById("stat-avg");
-  const statMax = document.getElementById("stat-max");
-  const statMin = document.getElementById("stat-min");
-  const statCount = document.getElementById("stat-count");
-  const statRange = document.getElementById("stat-range");
-  const btnReset = document.getElementById("btn-reset");
-  const timeRangeSelect = document.getElementById("time-range-select");
+  const btnLive = document.getElementById("btn-live");
   const btnRefresh = document.getElementById("btn-refresh");
-  // Trace toggle buttons
-  const btnTogglePower = document.getElementById("btn-toggle-power");
-  const btnToggleDaily = document.getElementById("btn-toggle-daily");
-  const btnToggleTypical = document.getElementById("btn-toggle-typical");
-  const btnToggleAvgPower = document.getElementById("btn-toggle-avg-power");
-  const btnToggleMeter = document.getElementById("btn-toggle-meter");
-  // Hover overlay elements
-  const hoverTime = document.getElementById("hover-time");
-  const hoverTotalEnergy = document.getElementById("hover-total-energy");
-  const hoverPower = document.getElementById("hover-power");
-  const hoverRollingAvg = document.getElementById("hover-rolling-avg");
-  const hoverDailyEnergy = document.getElementById("hover-daily-energy");
-  const hoverTypicalDailyEnergy = document.getElementById("hover-typical-daily-energy");
-  const hoverTypicalLabel = document.getElementById("hover-typical-label");
-  // Secondary summary elements
-  const statCurrentConsumption = document.getElementById("stat-current-consumption");
-  const statCostRange = document.getElementById("stat-cost-range");
-  const statTotalCost = document.getElementById("stat-total-cost");
-  const statMonthEnergy = document.getElementById("stat-month-energy");
-  const statMonthCost = document.getElementById("stat-month-cost");
-  const statWeekEnergy = document.getElementById("stat-week-energy");
-  const statWeekCost = document.getElementById("stat-week-cost");
-  const statDayEnergy = document.getElementById("stat-day-energy");
-  const statDayCost = document.getElementById("stat-day-cost");
-  const statAvgEnergy = document.getElementById("stat-avg-energy");
-  const statAvgCost = document.getElementById("stat-avg-cost");
-  const statMonthAvgEnergy = document.getElementById("stat-month-avg-energy");
-  const statMonthAvgCost = document.getElementById("stat-month-avg-cost");
-  const statWeekAvgEnergy = document.getElementById("stat-week-avg-energy");
-  const statWeekAvgCost = document.getElementById("stat-week-avg-cost");
-  const statDayAvgEnergy = document.getElementById("stat-day-avg-energy");
-  const statDayAvgCost = document.getElementById("stat-day-avg-cost");
+  const btnToggleScale = document.getElementById("btn-toggle-scale");
+  const btnToggleAvgMode = document.getElementById("btn-toggle-avg-mode");
+  const costInput = document.getElementById("cost-input");
+  const rangeButtons = Array.from(document.querySelectorAll("[data-range]"));
 
-  // All stat elements for skeleton loading
-  const statElements = [
-    statEnergy, statAvg, statMax, statMin, statCount, statRange, statCostRange,
-    statCurrentConsumption, statTotalCost, statMonthEnergy, statMonthCost,
-    statWeekEnergy, statWeekCost, statDayEnergy, statDayCost, statAvgEnergy, statAvgCost,
-    statMonthAvgEnergy, statMonthAvgCost, statWeekAvgEnergy, statWeekAvgCost,
-    statDayAvgEnergy, statDayAvgCost
+  const tile = {
+    livePower: document.getElementById("tile-live-power"),
+    liveTime: document.getElementById("tile-live-time"),
+    meterTotal: document.getElementById("tile-meter-total"),
+    energy: document.getElementById("tile-energy"),
+    energyCost: document.getElementById("tile-energy-cost"),
+    energyDelta: document.getElementById("tile-energy-delta"),
+    avgPower: document.getElementById("tile-avg-power"),
+    minPower: document.getElementById("tile-min-power"),
+    maxPower: document.getElementById("tile-max-power"),
+    day: document.getElementById("tile-day"),
+    dayCost: document.getElementById("tile-day-cost"),
+    dayDelta: document.getElementById("tile-day-delta"),
+    week: document.getElementById("tile-week"),
+    weekCost: document.getElementById("tile-week-cost"),
+    weekDelta: document.getElementById("tile-week-delta"),
+    month: document.getElementById("tile-month"),
+    monthCost: document.getElementById("tile-month-cost"),
+    monthDelta: document.getElementById("tile-month-delta"),
+  };
+  const typicalChipLabel = document.getElementById("lv-typical-label");
+  const avgChipLabel = document.getElementById("lv-avg-label");
+  const loadingEls = {
+    power: document.getElementById("loading-power"),
+    daily: document.getElementById("loading-daily"),
+    meter: document.getElementById("loading-meter"),
+  };
+
+  // Each section reveals on its own fetch, so tiles group by data source
+  const windowTileEls = [tile.energy, tile.energyCost, tile.energyDelta, tile.avgPower, tile.minPower, tile.maxPower].filter(Boolean);
+  const periodTileEls = [
+    tile.day, tile.dayCost, tile.dayDelta,
+    tile.week, tile.weekCost, tile.weekDelta,
+    tile.month, tile.monthCost, tile.monthDelta,
+    tile.meterTotal,
   ].filter(Boolean);
+  const liveTileEls = [tile.livePower, tile.liveTime].filter(Boolean);
 
-  let u = null;
-  let xVals = [];
-  let yVals = [];
-  let eVals = [];
-  let rollingAvgVals = []; // Rolling 2-day average of power
-  let dailyEnergyData = []; // Daily energy consumption data {t, kwh, is_partial}
-  let dailyEnergyVals = []; // Interpolated daily energy values aligned with xVals
-  let movingAvgDailyData = []; // 30-day moving average daily usage {t, kwh}
-  let typicalDailyEnergyVals = []; // 30-day moving average values aligned with xVals
-  let costPerKwh = window.EnergyMonitor.DEFAULT_COST_PER_KWH;
-  let avgDailyEnergyUsage = null; // kWh per day from historical data
-  let powerScaleMode = 'auto'; // 'auto' or 'fixed' - controls power Y-axis scaling
-  let avgMode = '30d'; // '30d' for moving average or 'total' for flat line
-  // Track series visibility: series index -> visible (true) or hidden (false)
-  const seriesVisibility = {
-    1: true, // Live Power
-    2: true, // Daily Usage
-    3: true, // Avg Power
-    4: true, // Meter Reading
-    5: true, // Typical Daily Usage
-  };
-
-  let selection = { start: null, end: null };
-  const pointerSelect = {
-    active: false,
-    pointerId: null,
-    startPx: null,
-    startMs: null,
-  };
+  // ── Constants & state ───────────────────────────────────────────────────
+  const SYNC_KEY = "energy-dashboard";
   const POLLING_MS = 10000;
-  const MIN_DRAG_PX = 10;
   const LIVE_THRESHOLD_SEC = 120;
   const HOUR_MS = 60 * 60 * 1000;
   const DAY_MS = 24 * HOUR_MS;
-  const DEFAULT_CHART_LOOKBACK_MS = 7 * DAY_MS;
-  const EMA_ALPHA = 0.0001;      // ≈ 2-day smoothing at 10s sample rate
+  // Readings resolution scales with the view: raw 10s rows up to 6h, then
+  // progressively coarser SQL buckets so no view ships more than ~10k points.
+  function bucketMsForRange() {
+    const durMs = range.endMs - range.startMs;
+    if (durMs <= 6 * HOUR_MS) return 0; // raw rows
+    if (durMs <= DAY_MS) return 60_000;
+    if (durMs <= 7 * DAY_MS) return 120_000;
+    if (durMs <= 30 * DAY_MS) return 600_000;
+    return 3_600_000;
+  }
+
+  // "Avg power" window scales with the view: minute up to 6h, hour up to 30d,
+  // day beyond (year view).
+  function rollingWindowSec() {
+    const durMs = range.endMs - range.startMs;
+    if (durMs <= 6 * HOUR_MS) return 60;
+    if (durMs <= 30 * DAY_MS) return 3600;
+    return 86400;
+  }
+
+  function rollingLabel() {
+    const w = rollingWindowSec();
+    return `Avg power (${w === 60 ? "1m" : w === 3600 ? "1h" : "1d"})`;
+  }
+  const PRESETS_MS = {
+    hour: HOUR_MS,
+    "6h": 6 * HOUR_MS,
+    day: DAY_MS,
+    week: 7 * DAY_MS,
+    month: 30 * DAY_MS,
+    year: 365 * DAY_MS,
+  };
+  const TILE_SUMMARY_LOOKBACK_MS = 30 * DAY_MS;
+
+  // Readings from /api/readings at the view's bucket resolution
+  let xVals = [];
+  let powerVals = [];
+  let meterVals = [];
+  let rollingVals = [];
+  let loadedBucketMs = null;
+
+  // Meter series thinned client-side (cumulative data needs far less detail)
+  let meterXs = [];
+  let meterYs = [];
+
+  // Daily chart data (from /api/energy_summary for the window)
+  let dayXs = [];
+  let dayKwh = [];
+  let dayTypical = [];
+  let windowMovingAvg = []; // {t, kwh} per day
+
+  // Typical baseline for tile deltas (all-time avg from a fixed 30-day summary)
+  let avgDailyEnergyUsage = null;
+
+  let costPerKwh = window.EnergyMonitor.DEFAULT_COST_PER_KWH;
+  let powerScaleMode = "auto"; // 'auto' | 'fixed' — power y-axis
+  let avgMode = "30d"; // '30d' moving average | 'total' flat all-time average
+
+  // The global time window
+  const range = {
+    presetKey: "week",
+    startMs: Date.now() - PRESETS_MS.week,
+    endMs: Date.now(),
+    live: true,
+  };
+
+  const charts = { power: null, daily: null, meter: null };
+  const seriesShow = {
+    power: { 1: true, 2: true },
+    daily: { 1: true, 2: true },
+    meter: { 1: true },
+  };
 
   let lastDataTimestamp = null;
+  let pollTimer = null;
   let pollController = null;
-  let chartLookbackMs = DEFAULT_CHART_LOOKBACK_MS;
+  let windowStatsController = null;
+  let lastWindowStats = null;
+  let lastPeriodStats = { day: null, week: null, month: null, latest: null };
 
-  function getChartWindowEndMs() {
-    return Date.now();
+  // ── Formatting helpers ──────────────────────────────────────────────────
+  function fmtDateOnly(ms) {
+    return new Date(ms).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   }
 
-  function getChartWindowStartMs() {
-    return getChartWindowEndMs() - chartLookbackMs;
+  function fmtGrouped(v, digits = 2) {
+    if (v == null || Number.isNaN(v)) return "–";
+    return Number(v).toLocaleString("en-GB", { minimumFractionDigits: digits, maximumFractionDigits: digits });
   }
 
-  function trimToChartWindow() {
-    if (!xVals.length) return;
-    const minSec = Math.floor(getChartWindowStartMs() / 1000);
-    let trimIndex = 0;
-    while (trimIndex < xVals.length && xVals[trimIndex] < minSec) {
-      trimIndex++;
+  // ── Window helpers ──────────────────────────────────────────────────────
+  function refreshLiveWindow() {
+    if (!range.live) return;
+    range.endMs = Date.now();
+    range.startMs = range.endMs - PRESETS_MS[range.presetKey];
+  }
+
+  // transitions-dev tabs sliding: the pill tweens to the active preset button.
+  const tabsPill = document.querySelector(".segmented .t-tabs-pill");
+
+  function movePill(btn, animate = true) {
+    if (!tabsPill) return;
+    if (!btn) {
+      tabsPill.classList.add("is-hidden");
+      return;
     }
-    if (trimIndex > 0) {
-      xVals = xVals.slice(trimIndex);
-      yVals = yVals.slice(trimIndex);
-      eVals = eVals.slice(trimIndex);
+    tabsPill.classList.remove("is-hidden");
+    if (!animate) {
+      const prev = tabsPill.style.transition;
+      tabsPill.style.transition = "none";
+      tabsPill.style.transform = `translateX(${btn.offsetLeft}px)`;
+      tabsPill.style.width = `${btn.offsetWidth}px`;
+      void tabsPill.offsetWidth;
+      tabsPill.style.transition = prev;
+    } else {
+      tabsPill.style.transform = `translateX(${btn.offsetLeft}px)`;
+      tabsPill.style.width = `${btn.offsetWidth}px`;
     }
   }
 
-  async function loadChartWindow() {
-    const endMs = getChartWindowEndMs();
-    const startMs = getChartWindowStartMs();
-    await Promise.all([
-      fetchReadings({ start: startMs, end: endMs }),
-      fetchEnergySummary({ start: startMs, end: endMs }),
-    ]);
+  function activeRangeButton() {
+    return rangeButtons.find((b) => b.classList.contains("is-active")) || null;
   }
 
-  // --------------------------------------------------------------------------
-  // Loading State Helpers
-  // --------------------------------------------------------------------------
-  function showLoading() {
-    if (chartLoading) chartLoading.classList.remove("hidden");
-    statElements.forEach(el => el.classList.add("skeleton"));
+  function setSegmentedActive(key) {
+    rangeButtons.forEach((b) => b.classList.toggle("is-active", b.dataset.range === key));
+    movePill(activeRangeButton());
   }
 
-  function hideLoading() {
-    if (chartLoading) chartLoading.classList.add("hidden");
-    statElements.forEach(el => el.classList.remove("skeleton"));
+  // ── Loading states — each chart and tile group reveals independently ─────
+  function setSkeleton(els, on) {
+    els.forEach((el) => el.classList.toggle("skeleton", on));
   }
 
-  /**
-   * The header token reports data freshness, and the live-power poller owns that — it runs
-   * every few seconds against the same backend. A chart fetch only speaks up when it fails.
-   */
-  function reportChartFetchFailed() {
+  function resetChart(key) {
+    const el = loadingEls[key];
+    if (!el) return;
+    el.classList.remove("hidden");
+    // Snap back to the pre-reveal state without animating the reverse
+    const body = el.parentElement;
+    body.classList.add("is-resetting");
+    body.classList.remove("is-revealed");
+    void body.offsetWidth;
+    body.classList.remove("is-resetting");
+  }
+
+  function revealChart(key) {
+    const el = loadingEls[key];
+    if (!el) return;
+    el.classList.add("hidden");
+    el.parentElement.classList.add("is-revealed");
+  }
+
+  function resetCharts() {
+    Object.keys(loadingEls).forEach(resetChart);
+  }
+
+  function reportFetchFailed() {
     setConnectionStatus(statusConn, false, "offline");
   }
 
-  /**
-   * Get chart dimensions from its container
-   */
-  function getChartSize() {
-    const wrapper = chartEl.parentElement;
+  // ── Chart construction ──────────────────────────────────────────────────
+  function chartSize(el) {
+    const wrapper = el.parentElement;
     return {
-      width: wrapper?.clientWidth || chartEl.clientWidth || 800,
-      height: wrapper?.clientHeight || 400,
+      width: wrapper?.clientWidth || 800,
+      height: wrapper?.clientHeight || 260,
     };
   }
 
-  // Series order expected by uPlot: x, power, daily, avgPower, meterReading, typicalDaily
-  function chartData() {
-    return [xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals];
+  // Allowed time-tick steps: nothing between 3h and 1d, so any multi-day
+  // window labels whole days rather than 6h/12h fractions.
+  const M = 60;
+  const H = 3600;
+  const D = 86400;
+  const X_TICK_INCRS = [
+    1, 5, 10, 15, 30,
+    M, 5 * M, 10 * M, 15 * M, 30 * M,
+    H, 2 * H, 3 * H,
+    D, 2 * D, 3 * D, 5 * D, 7 * D, 15 * D, 30 * D, 60 * D, 90 * D, 180 * D, 365 * D,
+  ];
+
+  function makeAxes(theme, unit) {
+    const font = `11px ${theme.fontMono}`;
+    return [
+      {
+        stroke: theme.axis,
+        grid: { show: false },
+        ticks: { stroke: theme.ticks },
+        size: 32,
+        space: 60,
+        incrs: X_TICK_INCRS,
+        font,
+      },
+      {
+        label: unit,
+        stroke: theme.axis,
+        grid: { stroke: theme.grid, width: 1 },
+        ticks: { stroke: theme.ticks },
+        size: 52,
+        font,
+      },
+    ];
   }
 
-  function initChart() {
-    if (!window.uPlot) {
-      console.warn("uPlot not loaded; chart disabled. Fetching will still run.");
+  /* Blank right-hand axis matching the power chart's second scale, so every
+     chart's plot area spans the same pixels and the time axes line up. */
+  function rightSpacerAxis() {
+    return {
+      side: 1,
+      scale: "y",
+      grid: { show: false },
+      ticks: { show: false },
+      size: 52,
+      values: (u, splits) => splits.map(() => ""),
+    };
+  }
+
+  /**
+   * Brushing a chart sets the global window. uPlot draws the selection rect;
+   * we consume it, clear it, and rescale every chart together.
+   */
+  function onSelect(u) {
+    const s = u.select;
+    if (!s || s.width <= 5) return;
+    const x0 = u.posToVal(s.left, "x");
+    const x1 = u.posToVal(s.left + s.width, "x");
+    u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+    if (Number.isFinite(x0) && Number.isFinite(x1) && x1 > x0) {
+      applyCustomRange(Math.floor(x0 * 1000), Math.floor(x1 * 1000));
+    }
+  }
+
+  /**
+   * Cursor tooltip: a floating box beside the crosshair. Cursor sync drives
+   * this on every chart, so hovering one chart pops the box on all of them.
+   */
+  function renderTip(u, tip, tipContent) {
+    const c = u.cursor;
+    const idx = c && Number.isInteger(c.idx) ? c.idx : null;
+    const content = idx != null && c.left >= 0 ? tipContent(idx) : null;
+    if (!content) {
+      tip.classList.add("hidden");
       return;
     }
-    const { width, height } = getChartSize();
-    const opts = {
-      width,
-      height,
+    const rows = content.rows
+      .map(
+        (r) =>
+          `<div class="chart-tip__row"><span class="legend-swatch ${r.swatch}"></span>` +
+          `<span class="chart-tip__label">${r.label}</span><span class="chart-tip__value">${r.value}</span></div>`
+      )
+      .join("");
+    tip.innerHTML = `<div class="chart-tip__title">${content.title}</div>${rows}`;
+    tip.classList.remove("hidden");
+
+    const body = tip.parentElement;
+    const bodyRect = body.getBoundingClientRect();
+    const overRect = u.over.getBoundingClientRect();
+    const baseX = overRect.left - bodyRect.left;
+    const baseY = overRect.top - bodyRect.top;
+    let x = baseX + c.left + 14;
+    if (x + tip.offsetWidth > body.clientWidth - 8) x = baseX + c.left - tip.offsetWidth - 14;
+    let y = baseY + c.top + 14;
+    y = Math.max(4, Math.min(y, body.clientHeight - tip.offsetHeight - 4));
+    tip.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+  }
+
+  function buildChart(el, { series, axes, scales, tipContent }) {
+    if (!window.uPlot || !el) return null;
+    const body = el.closest(".widget-body");
+    body?.querySelector(".chart-tip")?.remove(); // scale toggle rebuilds the chart
+    const tip = document.createElement("div");
+    tip.className = "chart-tip hidden";
+    body?.appendChild(tip);
+    const { width, height } = chartSize(el);
+    const u = new uPlot(
+      {
+        width,
+        height,
+        scales,
+        axes,
+        series,
+        legend: { show: false, live: false },
+        select: getChartSelectOptions(),
+        cursor: {
+          sync: { key: SYNC_KEY, setSeries: false },
+          drag: { x: true, y: false, setScale: false },
+          points: { size: 6 },
+        },
+        hooks: {
+          setSelect: [onSelect],
+          setCursor: [(uInst) => renderTip(uInst, tip, tipContent)],
+        },
+      },
+      series.map(() => []),
+      el
+    );
+    if (body && !body.dataset.dblclickBound) {
+      body.addEventListener("dblclick", backToLive);
+      body.dataset.dblclickBound = "1";
+    }
+    return u;
+  }
+
+  function initCharts() {
+    if (!window.uPlot) {
+      console.warn("uPlot not loaded; charts disabled. Fetching will still run.");
+      return;
+    }
+    const theme = readChartTheme();
+    initPowerChart(theme);
+
+    charts.daily = buildChart(document.getElementById("chart-daily"), {
+      scales: { x: { time: true }, y: { range: (u, min, max) => [0, (max || 1) * 1.1] } },
+      axes: [...makeAxes(theme, "kWh"), rightSpacerAxis()],
+      series: [
+        {},
+        { label: "Daily usage", stroke: theme.dailyEnergy, width: 2 },
+        { label: "30d avg", stroke: theme.typicalDaily, width: 2, dash: [6, 4] },
+      ],
+      tipContent: dailyTip,
+    });
+
+    charts.meter = buildChart(document.getElementById("chart-meter"), {
+      scales: { x: { time: true }, y: { auto: true } },
+      axes: [...makeAxes(theme, "kWh"), rightSpacerAxis()],
+      series: [
+        {},
+        {
+          label: "Meter",
+          stroke: theme.energy,
+          width: 1.5,
+          points: { show: false },
+          // Thinned to ~hourly samples, so smooth the segments between them
+          ...(window.uPlot.paths && window.uPlot.paths.spline ? { paths: window.uPlot.paths.spline() } : {}),
+        },
+      ],
+      tipContent: meterTip,
+    });
+
+    Object.entries(charts).forEach(([key, u]) => u && applySeriesShow(key));
+  }
+
+  function initPowerChart(theme = readChartTheme()) {
+    // Live peaks reach tens of kW while the average sits around 100–300 W, so
+    // the average gets its own right-hand scale. Axes are color-coded to their
+    // series to keep the pairing readable.
+    const axes = makeAxes(theme, "W live");
+    axes[1].stroke = theme.power;
+    axes.push({
+      side: 1,
+      scale: "y2",
+      label: "W avg",
+      stroke: theme.powerAvg,
+      grid: { show: false },
+      ticks: { stroke: theme.ticks },
+      size: 52,
+      font: `11px ${theme.fontMono}`,
+    });
+    charts.power = buildChart(document.getElementById("chart-power"), {
       scales: {
         x: { time: true },
-        y: {
-          auto: powerScaleMode === "auto",
-          range: powerScaleMode === "fixed" ? [0, 2000] : undefined,
-        },
+        y: powerScaleMode === "fixed" ? { range: [0, 2000] } : { auto: true },
         y2: { auto: true },
-        y3: { auto: true },
       },
-      axes: getDesktopChartAxes(),
-      series: getDesktopChartSeries(),
-      legend: { show: false, live: false },
-      select: getChartSelectOptions(),
-      hooks: {
-        setSelect: [
-          (uInst) => {
-            const s = uInst.select;
-            if (s.width > 0) {
-              const x0Sec = uInst.posToVal(s.left, "x");
-              const x1Sec = uInst.posToVal(s.left + s.width, "x");
-              if (isFinite(x0Sec) && isFinite(x1Sec) && x1Sec > x0Sec) {
-                const startMs = Math.floor(x0Sec * 1000);
-                const endMs = Math.floor(x1Sec * 1000);
-                applySelectionRange(startMs, endMs);
-              }
-              // clear selection rectangle
-              uInst.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
-            }
-          },
-        ],
-        setCursor: [
-          (uInst) => {
-            const idx = uInst.cursor && Number.isInteger(uInst.cursor.idx) ? uInst.cursor.idx : null;
-            updateHover(idx);
-          },
-        ],
-      },
+      axes,
+      series: [
+        {},
+        { label: "Live power", stroke: theme.power, fill: theme.powerFill, width: 1.5 },
+        { label: "Avg power (1h)", stroke: theme.powerAvg, width: 1.5, dash: [4, 4], scale: "y2" },
+      ],
+      tipContent: powerTip,
+    });
+  }
+
+  function applySeriesShow(chartKey) {
+    const u = charts[chartKey];
+    if (!u) return;
+    Object.entries(seriesShow[chartKey]).forEach(([idx, show]) => {
+      if (u.series[idx]) u.setSeries(Number(idx), { show });
+    });
+  }
+
+  function setChartData() {
+    if (charts.power) charts.power.setData([xVals, powerVals, rollingVals]);
+    if (charts.daily) charts.daily.setData([dayXs, dayKwh, dayTypical]);
+    if (charts.meter) charts.meter.setData([meterXs, meterYs]);
+  }
+
+  function setXScales() {
+    const min = range.startMs / 1000;
+    const max = range.endMs / 1000;
+    Object.values(charts).forEach((u) => u && u.setScale("x", { min, max }));
+  }
+
+  // ── Tooltip content per chart ───────────────────────────────────────────
+  function powerTip(idx) {
+    if (idx < 0 || idx >= xVals.length) return null;
+    const rows = [];
+    if (seriesShow.power[1]) rows.push({ swatch: "swatch-power", label: "Live power", value: `${Fmt.n(powerVals[idx], 0)} W` });
+    if (seriesShow.power[2]) rows.push({ swatch: "swatch-power-avg", label: rollingLabel(), value: `${Fmt.n(rollingVals[idx], 0)} W` });
+    if (!rows.length) return null;
+    return { title: Fmt.t(xVals[idx] * 1000), rows };
+  }
+
+  function dailyTip(idx) {
+    if (idx < 0 || idx >= dayXs.length) return null;
+    const typicalLabel = avgMode === "30d" ? "30d avg" : "Total avg";
+    const rows = [];
+    if (seriesShow.daily[1]) rows.push({ swatch: "swatch-daily", label: "Daily usage", value: `${Fmt.n(dayKwh[idx], 2)} kWh` });
+    if (seriesShow.daily[2]) rows.push({ swatch: "swatch-typical", label: typicalLabel, value: `${Fmt.n(dayTypical[idx], 2)} kWh` });
+    if (!rows.length) return null;
+    return { title: fmtDateOnly(dayXs[idx] * 1000), rows };
+  }
+
+  function meterTip(idx) {
+    if (idx < 0 || idx >= meterXs.length || !seriesShow.meter[1]) return null;
+    return {
+      title: Fmt.t(meterXs[idx] * 1000),
+      rows: [{ swatch: "swatch-meter", label: "Meter", value: `${fmtGrouped(meterYs[idx], 2)} kWh` }],
     };
-    u = new uPlot(opts, chartData(), chartEl);
-
-    applySeriesVisibility();
-
-    if (u && u.over) {
-      const over = u.over;
-      over.addEventListener("pointerdown", handlePointerSelectStart);
-      over.addEventListener("pointermove", handlePointerSelectMove);
-      over.addEventListener("pointerup", handlePointerSelectEnd);
-      over.addEventListener("pointercancel", cancelPointerSelection);
-      over.addEventListener("lostpointercapture", cancelPointerSelection);
-    }
-
-    // Double-click resets zoom to full range
-    chartEl.addEventListener("dblclick", () => {
-      if (xVals.length) {
-        u.setScale("x", { min: xVals[0], max: xVals[xVals.length - 1] });
-        clearSelection();
-      }
-    });
-    
-    // Prevent iOS Safari from scrolling page during chart interaction
-    chartEl.addEventListener("touchstart", (e) => {
-      if (e.touches.length === 1) {
-        e.preventDefault();
-      }
-    }, { passive: false });
   }
 
-  function applySeriesVisibility() {
-    if (!u || !u.series) return;
-    Object.keys(seriesVisibility).forEach(seriesIdx => {
-      const idx = parseInt(seriesIdx);
-      if (u.series[idx]) {
-        u.setSeries(idx, { show: seriesVisibility[idx] });
-      }
-    });
-  }
-
-  function renderSelection() {
-    if (selection.start && selection.end) {
-      statRange.textContent = formatDuration(selection.end - selection.start);
-    } else {
-      statRange.textContent = "";
-    }
-  }
-
-  function applySelectionRange(startMs, endMs, clampToData = true) {
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
-    if (clampToData && xVals.length) {
-      const minMs = xVals[0] * 1000;
-      const maxMs = xVals[xVals.length - 1] * 1000;
-      startMs = Math.max(minMs, Math.min(startMs, maxMs));
-      endMs = Math.max(minMs, Math.min(endMs, maxMs));
-      if (endMs <= startMs) endMs = Math.min(maxMs, startMs + 1);
-    }
-    if (endMs <= startMs) return;
-    selection = { start: startMs, end: endMs };
-    clearPointerSelectionOverlay();
-
-    if (u) {
-      u.setData(chartData());
-      u.setScale("x", { min: startMs / 1000, max: endMs / 1000 });
-    }
-    renderSelection();
-    updateSelectionStats(startMs, endMs);
-  }
-
-  function clearSelection() {
-    selection = { start: null, end: null };
-    if (statEnergy) statEnergy.textContent = "–";
-    if (statCostRange) statCostRange.textContent = "–";
-    if (statAvg) statAvg.textContent = "–";
-    if (statMax) statMax.textContent = "–";
-    if (statMin) statMin.textContent = "–";
-    if (statCount) statCount.textContent = "–";
-    renderSelection();
-    clearPointerSelectionOverlay();
-  }
-
+  // ── Derived series ──────────────────────────────────────────────────────
   /**
-   * Exponential moving average of power; EMA_ALPHA approximates a 2-day window at
-   * the 10s sample rate. Gaps hold the last EMA value so the line stays continuous.
+   * Trailing mean of power over the view-dependent window (time-based
+   * two-pointer, so data gaps shrink the sample count rather than stretching
+   * the horizon). powerVals is pre-filtered by processReadingsData.
    */
   function calculateRollingAvg() {
-    if (xVals.length === 0 || yVals.length === 0) {
-      rollingAvgVals = [];
-      return;
-    }
-    rollingAvgVals = new Array(xVals.length).fill(null);
-    let ema = null;
-    for (let i = 0; i < xVals.length; i++) {
-      if (yVals[i] != null && Number.isFinite(yVals[i])) {
-        ema = ema === null ? yVals[i] : EMA_ALPHA * yVals[i] + (1 - EMA_ALPHA) * ema;
-        rollingAvgVals[i] = ema;
-      } else if (ema !== null) {
-        rollingAvgVals[i] = ema;
-      }
-    }
-  }
-
-  function calculateDailyEnergyVals() {
-    dailyEnergyVals = alignDailyDataToTimestamps(dailyEnergyData, xVals);
-  }
-
-  /**
-   * Typical daily energy aligned with xVals: the 30-day moving average per day,
-   * or a flat all-time average line, depending on avgMode.
-   */
-  function calculateTypicalDailyEnergyVals() {
-    if (avgMode === '30d') {
-      typicalDailyEnergyVals = alignDailyDataToTimestamps(movingAvgDailyData, xVals);
-    } else if (avgDailyEnergyUsage) {
-      typicalDailyEnergyVals = new Array(xVals.length).fill(avgDailyEnergyUsage);
-    } else {
-      typicalDailyEnergyVals = new Array(xVals.length).fill(null);
-    }
-  }
-
-  /**
-   * Fetch energy summary (avg daily + daily usage + 30d moving avg).
-   */
-  async function fetchEnergySummary({ start = null, end = null } = {}) {
-    try {
-      const qs = new URLSearchParams();
-      if (start != null) qs.set("start", String(start));
-      if (end != null) qs.set("end", String(end));
-      const suffix = qs.toString();
-      const data = await fetchJson(suffix ? `/api/energy_summary?${suffix}` : "/api/energy_summary");
-      avgDailyEnergyUsage = data.avg_daily ?? null;
-      dailyEnergyData = data.daily;
-      movingAvgDailyData = data.moving_avg_30d || [];
-      console.log(`Loaded energy summary: avg=${avgDailyEnergyUsage} kWh/day, ${dailyEnergyData.length} days, ${movingAvgDailyData.length} moving avg points`);
-    } catch (e) {
-      console.error("Failed to fetch energy summary:", e);
-      avgDailyEnergyUsage = null;
-      dailyEnergyData = [];
-      movingAvgDailyData = [];
-    }
-  }
-
-  function updateChart() {
-    if (!u) {
-      initChart();
-      if (!u) return;
-    }
-    
-    // Preserve current x-scale window across refresh
-    const curX = u.scales && u.scales.x ? u.scales.x : null;
-    const curMin = curX && Number.isFinite(curX.min) ? curX.min : null;
-    const curMax = curX && Number.isFinite(curX.max) ? curX.max : null;
-
-    calculateRollingAvg();
-    calculateDailyEnergyVals();
-    calculateTypicalDailyEnergyVals();
-    u.setData(chartData());
-
-    if (curMin !== null && curMax !== null && curMax > curMin && xVals.length > 0) {
-      const latestDataSec = xVals[xVals.length - 1];
-      const oldLatestSec = curMax;
-      // A right edge near the latest data means the user is watching "live":
-      // slide the window forward to include new points, keeping its width.
-      const isWatchingLive = (oldLatestSec >= latestDataSec - LIVE_THRESHOLD_SEC);
-
-      if (isWatchingLive && latestDataSec > oldLatestSec) {
-        const windowWidth = curMax - curMin;
-        u.setScale("x", { min: latestDataSec - windowWidth, max: latestDataSec });
-        if (selection.end && Math.abs(selection.end / 1000 - oldLatestSec) < LIVE_THRESHOLD_SEC) {
-          selection.end = latestDataSec * 1000;
-        }
-      } else {
-        u.setScale("x", { min: curMin, max: curMax });
-      }
-    }
-
-    if (selection.start && selection.end) {
-      updateSelectionStats(selection.start, selection.end);
-    }
-  }
-
-  async function fetchReadings({ start = null, end = null, incremental = false, signal = null } = {}) {
-    const qs = new URLSearchParams();
-
-    // Incremental updates only fetch data newer than what we already have
-    if (incremental && lastDataTimestamp) {
-      qs.set("start", String(lastDataTimestamp + 1));
-    } else if (start) {
-      qs.set("start", String(start));
-    }
-    if (end) qs.set("end", String(end));
-
-    try {
-      const fetchOpts = signal ? { signal } : {};
-      const rows = await fetchJson(`/api/readings?${qs.toString()}`, fetchOpts);
-      if (!rows.length) return;
-
-      const { xVals: newXVals, yVals: newYVals, eVals: newEVals } = processReadingsData(rows);
-
-      if (incremental && xVals.length > 0) {
-        // Append only points newer than what we already have
-        const lastExistingTime = xVals[xVals.length - 1];
-        let appendIndex = newXVals.length;
-        for (let i = 0; i < newXVals.length; i++) {
-          if (newXVals[i] > lastExistingTime) {
-            appendIndex = i;
-            break;
-          }
-        }
-        if (appendIndex < newXVals.length) {
-          xVals = xVals.concat(newXVals.slice(appendIndex));
-          yVals = yVals.concat(newYVals.slice(appendIndex));
-          eVals = eVals.concat(newEVals.slice(appendIndex));
-          trimToChartWindow();
-        }
-      } else {
-        xVals = newXVals;
-        yVals = newYVals;
-        eVals = newEVals;
-      }
-
-      if (xVals.length > 0) {
-        lastDataTimestamp = xVals[xVals.length - 1] * 1000;
-      }
-
-      updateChart();
-
-      // Initial load calls updatePeriodSummaries once from the init block instead
-      if (incremental) {
-        updatePeriodSummaries();
-      }
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") return;
-      console.error(e);
-      reportChartFetchFailed();
-    }
-  }
-
-  let selectionStatsController = null;
-
-  /** Selection stats come from /api/stats so they match the server's raw-row numbers
-   * (the chart only holds 2-min max-bucketed data). */
-  async function updateSelectionStats(startMs, endMs) {
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
-    renderTypicalForRange(startMs, endMs);
-    if (selectionStatsController) selectionStatsController.abort();
-    selectionStatsController = new AbortController();
-    try {
-      const stats = await fetchStats(startMs, endMs, selectionStatsController.signal);
-      const energyUsed = stats.energy_used_kwh;
-      statEnergy.textContent = Fmt.n(energyUsed, 2);
-      if (statCostRange) statCostRange.textContent = Fmt.n(energyUsed != null ? energyUsed * costPerKwh : null, 2);
-      statAvg.textContent = Fmt.n(stats.avg_power_watts, 1);
-      statMax.textContent = Fmt.n(stats.max_power_watts, 0);
-      statMin.textContent = Fmt.n(stats.min_power_watts, 0);
-      statCount.textContent = stats.count != null ? String(stats.count) : "–";
-    } catch (e) {
-      if (e.name === "AbortError") return;
-      console.error("[selectionStats] fetch failed:", e);
-    }
-  }
-
-  function renderTypicalForRange(startMs, endMs) {
-    if (statAvgEnergy && avgDailyEnergyUsage) {
-      const avgEnergy = avgDailyEnergyUsage * ((endMs - startMs) / DAY_MS);
-      statAvgEnergy.textContent = Fmt.n(avgEnergy, 2);
-      if (statAvgCost) statAvgCost.textContent = Fmt.n(avgEnergy * costPerKwh, 2);
-    } else {
-      if (statAvgEnergy) statAvgEnergy.textContent = "–";
-      if (statAvgCost) statAvgCost.textContent = "–";
-    }
-  }
-
-  function updateHover(idx) {
-    if (!xVals.length || idx == null || idx < 0 || idx >= xVals.length) {
-      hoverTime.textContent = "";
-      hoverTotalEnergy.textContent = "";
-      hoverPower.textContent = "";
-      if (hoverRollingAvg) hoverRollingAvg.textContent = "";
-      if (hoverDailyEnergy) hoverDailyEnergy.textContent = "";
-      if (hoverTypicalDailyEnergy) hoverTypicalDailyEnergy.textContent = "";
-      return;
-    }
-
-    const tMs = xVals[idx] * 1000;
-    hoverTime.textContent = Fmt.t(tMs);
-    hoverTotalEnergy.textContent = Fmt.n(eVals[idx], 2);
-    hoverPower.textContent = Fmt.n(yVals[idx], 0);
-
-    if (hoverDailyEnergy) {
-      const dailyKwh = dailyEnergyVals[idx];
-      hoverDailyEnergy.textContent = dailyKwh != null ? Fmt.n(dailyKwh, 2) : "–";
-    }
-
-    if (hoverRollingAvg) {
-      hoverRollingAvg.textContent = Fmt.n(rollingAvgVals[idx], 0);
-    }
-
-    if (hoverTypicalDailyEnergy) {
-      const typicalDailyKwh = typicalDailyEnergyVals[idx];
-      hoverTypicalDailyEnergy.textContent = typicalDailyKwh != null ? Fmt.n(typicalDailyKwh, 2) : "–";
-    }
-  }
-
-  function selectRelativeRange(durationMs) {
-    if (!xVals.length) return;
-    const endMs = xVals[xVals.length - 1] * 1000;
-    const startMs = Math.max(xVals[0] * 1000, endMs - durationMs);
-    applySelectionRange(startMs, endMs);
-  }
-
-  function getRelativeXPx(evt) {
-    if (!u || !u.over) return null;
-    const rect = u.over.getBoundingClientRect();
-    if (!rect || !rect.width) return null;
-    const x = evt.clientX - rect.left;
-    if (!Number.isFinite(x)) return null;
-    return Math.max(0, Math.min(rect.width, x));
-  }
-
-  function pxToMs(px) {
-    if (!u || px == null) return null;
-    const xValSec = u.posToVal(px, "x");
-    return Number.isFinite(xValSec) ? Math.floor(xValSec * 1000) : null;
-  }
-
-  function findNearestIndex(targetSec) {
-    if (!xVals.length || !Number.isFinite(targetSec)) return null;
+    const windowSec = rollingWindowSec();
+    rollingVals = new Array(xVals.length).fill(null);
     let lo = 0;
-    let hi = xVals.length - 1;
-    while (lo <= hi) {
-      const mid = Math.floor((lo + hi) / 2);
-      const midVal = xVals[mid];
-      if (midVal === targetSec) return mid;
-      if (midVal < targetSec) lo = mid + 1;
-      else hi = mid - 1;
+    let sum = 0;
+    let count = 0;
+    for (let i = 0; i < xVals.length; i++) {
+      sum += powerVals[i];
+      count++;
+      while (xVals[lo] < xVals[i] - windowSec) {
+        sum -= powerVals[lo];
+        count--;
+        lo++;
+      }
+      rollingVals[i] = sum / count;
     }
-    if (lo >= xVals.length) return xVals.length - 1;
-    if (hi < 0) return 0;
-    return targetSec - xVals[hi] <= xVals[lo] - targetSec ? hi : lo;
+    updateRollingLabel();
   }
 
-  function updateHoverAtPx(px) {
-    if (!u || !xVals.length || px == null) return;
-    const xValSec = u.posToVal(px, "x");
-    const idx = findNearestIndex(xValSec);
-    if (idx != null) {
-      updateHover(idx);
-    }
+  function updateRollingLabel() {
+    if (avgChipLabel) avgChipLabel.textContent = rollingLabel();
   }
 
-  function renderPointerSelection(currentPx) {
-    if (!pointerSelect.active || pointerSelect.startPx == null || currentPx == null || !u || !u.over) return;
-    const left = Math.min(pointerSelect.startPx, currentPx);
-    const width = Math.abs(pointerSelect.startPx - currentPx);
-    const height = u.over.clientHeight || chartEl.clientHeight || 0;
-    u.setSelect({ left, width, top: 0, height }, false);
-  }
-
-  function clearPointerSelectionOverlay() {
-    if (!u) return;
-    u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
-  }
-
-  function resetPointerSelectionState() {
-    if (pointerSelect.pointerId != null && u && u.over && u.over.releasePointerCapture) {
-      try {
-        u.over.releasePointerCapture(pointerSelect.pointerId);
-      } catch (_) {
-        // ignore
+  /**
+   * Thin the cumulative meter series client-side: keep the last sample per
+   * minute on short views, per hour otherwise. The line is smooth and
+   * monotonic, so nothing visible is lost.
+   */
+  function thinMeterSeries() {
+    const stepSec = range.endMs - range.startMs <= 6 * HOUR_MS ? 60 : 3600;
+    meterXs = [];
+    meterYs = [];
+    let lastKey = null;
+    for (let i = 0; i < xVals.length; i++) {
+      const key = Math.floor(xVals[i] / stepSec);
+      if (key !== lastKey) {
+        meterXs.push(xVals[i]);
+        meterYs.push(meterVals[i]);
+        lastKey = key;
+      } else {
+        meterXs[meterXs.length - 1] = xVals[i];
+        meterYs[meterYs.length - 1] = meterVals[i];
       }
     }
-    pointerSelect.active = false;
-    pointerSelect.pointerId = null;
-    pointerSelect.startPx = null;
-    pointerSelect.startMs = null;
-    clearPointerSelectionOverlay();
   }
 
-  function handlePointerSelectStart(evt) {
-    if (!evt || !u || !xVals.length) return;
-    
-    // For touch, we want to prevent scrolling and other default behaviors
-    evt.preventDefault();
-    
-    const px = getRelativeXPx(evt);
-    if (px == null) return;
-    const startMs = pxToMs(px);
-    if (!Number.isFinite(startMs)) return;
-    
-    pointerSelect.active = true;
-    pointerSelect.pointerId = evt.pointerId;
-    pointerSelect.startPx = px;
-    pointerSelect.startMs = startMs;
-    
-    // Capture pointer to receive events even if finger moves outside element
-    if (u.over.setPointerCapture) {
-      try {
-        u.over.setPointerCapture(evt.pointerId);
-      } catch (_) {
-        // ignore inability to capture
-      }
-    }
-    updateHoverAtPx(px);
-    renderPointerSelection(px);
+  function recomputeDerived() {
+    calculateRollingAvg();
+    thinMeterSeries();
   }
 
-  function handlePointerSelectMove(evt) {
-    if (!pointerSelect.active || evt.pointerId !== pointerSelect.pointerId) return;
-    evt.preventDefault();
-    
-    const px = getRelativeXPx(evt);
-    if (px == null) return;
-    updateHoverAtPx(px);
-    renderPointerSelection(px);
+  function rebuildDailySeries(dailyData) {
+    dayXs = dailyData.map((d) => Math.floor(d.t / 1000) + 43200); // centre bars on their day
+    dayKwh = dailyData.map((d) => d.kwh);
+    rebuildTypicalSeries(dailyData);
   }
 
-  function finalizePointerSelection(px) {
-    const startPx = pointerSelect.startPx;
-    const startMs = pointerSelect.startMs;
-    const endPx = px != null ? px : startPx;
-    const endMs = pxToMs(endPx);
-    resetPointerSelectionState();
-    
-    // Require minimum drag distance to prevent accidental tap-to-zoom on touch devices
-    const dragDistance = Math.abs(endPx - startPx);
-    if (dragDistance < MIN_DRAG_PX) {
-      return; // Ignore taps and tiny drags
-    }
-    
-    // Clear active range since user made a custom selection
-    setTimeRange(null);
-    
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
-    const from = Math.min(startMs, endMs);
-    let to = Math.max(startMs, endMs);
-    if (to === from) {
-      to = from + 1;
-    }
-    applySelectionRange(from, to);
-  }
-
-  function handlePointerSelectEnd(evt) {
-    if (!pointerSelect.active || evt.pointerId !== pointerSelect.pointerId) return;
-    evt.preventDefault();
-    
-    const px = getRelativeXPx(evt);
-    finalizePointerSelection(px);
-  }
-
-  function cancelPointerSelection(evt) {
-    if (!pointerSelect.active) return;
-    if (evt && pointerSelect.pointerId != null && evt.pointerId !== pointerSelect.pointerId) return;
-    resetPointerSelectionState();
-  }
-
-  function setTimeRange(value) {
-    if (timeRangeSelect) timeRangeSelect.value = value || '';
-  }
-
-  btnReset.addEventListener("click", () => {
-    if (u && xVals.length) {
-      u.setScale("x", { min: xVals[0], max: xVals[xVals.length - 1] });
-      u.setData(chartData());
-    }
-    setTimeRange(null);
-    clearSelection();
-  });
-  
-  const btnToggleScale = document.getElementById("btn-toggle-scale");
-  if (btnToggleScale) {
-    btnToggleScale.addEventListener("click", () => {
-      powerScaleMode = powerScaleMode === 'auto' ? 'fixed' : 'auto';
-      btnToggleScale.textContent = powerScaleMode === 'auto' ? 'Auto' : 'Fixed';
-
-      // The Y scale is fixed in the uPlot options, so recreate the chart
-      if (u) {
-        u.destroy();
-        u = null;
-      }
-      initChart();
-      if (u && xVals.length > 0) {
-        u.setData(chartData());
-        if (selection.start && selection.end) {
-          u.setScale("x", { min: selection.start / 1000, max: selection.end / 1000 });
-        }
-      }
-    });
-  }
-
-  const btnToggleAvgMode = document.getElementById("btn-toggle-avg-mode");
-  if (btnToggleAvgMode) {
-    btnToggleAvgMode.addEventListener("click", () => {
-      avgMode = avgMode === '30d' ? 'total' : '30d';
-      btnToggleAvgMode.textContent = avgMode === '30d' ? '30d' : 'Total';
-      if (hoverTypicalLabel) {
-        hoverTypicalLabel.textContent = avgMode === '30d' ? '30d avg daily usage (kWh):' : 'Total avg daily usage (kWh):';
-      }
-      if (u && u.series && u.series[5]) {
-        u.series[5].label = avgMode === '30d' ? "30d Avg Daily Usage" : "Total Avg Daily Usage";
-      }
-      calculateTypicalDailyEnergyVals();
-      if (u && xVals.length > 0) {
-        u.setData(chartData());
-        if (selection.start && selection.end) {
-          u.setScale("x", { min: selection.start / 1000, max: selection.end / 1000 });
-        }
-      }
-    });
-  }
-
-  function setupTraceToggle(btn, seriesIdx) {
-    if (!btn) return;
-    btn.addEventListener("click", () => {
-      if (!u) return;
-      const newVisibility = seriesVisibility[seriesIdx] === false;
-      seriesVisibility[seriesIdx] = newVisibility;
-      if (u.series && u.series[seriesIdx]) {
-        u.setSeries(seriesIdx, { show: newVisibility });
-      }
-      btn.classList.toggle("inactive", !newVisibility);
-      btn.setAttribute("aria-pressed", String(newVisibility));
-    });
-  }
-
-  setupTraceToggle(btnTogglePower, 1);
-  setupTraceToggle(btnToggleDaily, 2);
-  setupTraceToggle(btnToggleAvgPower, 3);
-  setupTraceToggle(btnToggleMeter, 4);
-  setupTraceToggle(btnToggleTypical, 5);
-  if (btnRefresh) {
-    btnRefresh.addEventListener("click", async () => {
-      if (btnRefresh.disabled) return;
-      const originalLabel = btnRefresh.textContent;
-      btnRefresh.disabled = true;
-      btnRefresh.textContent = "Refreshing...";
-      btnRefresh.classList.add("btn-loading");
-      try {
-        await loadChartWindow();
-      } finally {
-        btnRefresh.disabled = false;
-        btnRefresh.textContent = originalLabel;
-        btnRefresh.classList.remove("btn-loading");
-      }
-    });
-  }
-  // Ranges within the loaded window just re-select; longer ones refetch with a wider lookback.
-  const RELATIVE_RANGES_MS = { hour: HOUR_MS, day: DAY_MS };
-  const LOOKBACK_RANGES_MS = { week: 7 * DAY_MS, month: 30 * DAY_MS, year: 365 * DAY_MS };
-
-  if (timeRangeSelect) {
-    timeRangeSelect.addEventListener("change", async () => {
-      const value = timeRangeSelect.value;
-      if (RELATIVE_RANGES_MS[value]) {
-        selectRelativeRange(RELATIVE_RANGES_MS[value]);
-      } else if (LOOKBACK_RANGES_MS[value]) {
-        chartLookbackMs = LOOKBACK_RANGES_MS[value];
-        showLoading();
-        try {
-          await loadChartWindow();
-          applySelectionRange(getChartWindowStartMs(), Date.now(), false);
-        } finally {
-          hideLoading();
-        }
-      }
-    });
-  }
-
-  async function poll() {
-    if (pollController) pollController.abort();
-    pollController = new AbortController();
-    await fetchReadings({ incremental: true, signal: pollController.signal });
-    setTimeout(poll, POLLING_MS);
-  }
-
-  window.addEventListener("pagehide", () => {
-    if (pollController) pollController.abort();
-  });
-
-  window.addEventListener("resize", () => {
-    if (u) {
-      const { width, height } = getChartSize();
-      u.setSize({ width, height });
-    }
-  });
-
-  // --------------------------------------------------------------------------
-  // Initialization
-  // --------------------------------------------------------------------------
-  showLoading();
-  initChart();
-  startLivePower(livePowerEl, { statusEl: statusConn });
-
-  // Load chart data and summary in parallel for faster initial render
-  // Use allSettled to ensure updatePeriodSummaries runs even if one fetch fails
-  const initialEndMs = getChartWindowEndMs();
-  const initialStartMs = getChartWindowStartMs();
-  Promise.allSettled([
-    fetchReadings({ start: initialStartMs, end: initialEndMs }),
-    fetchEnergySummary({ start: initialStartMs, end: initialEndMs }),
-  ])
-    .then(([readingsResult, summaryResult]) => {
-      if (readingsResult.status === "rejected") {
-        console.error("fetchReadings failed:", readingsResult.reason);
-      }
-      if (summaryResult.status === "rejected") {
-        console.error("fetchEnergySummary failed:", summaryResult.reason);
-      }
-
-      hideLoading();
-      initCostInput();
-
-      if (xVals.length > 0) {
-        applySelectionRange(initialStartMs, initialEndMs, false);
-      }
-
-      // Still populates the "Real" stats even if fetchEnergySummary failed
-      updatePeriodSummaries();
-      poll();
-    });
-
-  function initCostInput() {
-    costPerKwh = loadCostPerKwh();
-    const input = document.getElementById("cost-input");
-    if (!input) return;
-    input.value = String(costPerKwh);
-    input.addEventListener("change", () => {
-      const value = parseFloat(input.value);
-      if (!Number.isNaN(value) && value >= 0) {
-        costPerKwh = value;
-        saveCostPerKwh(value);
-        updatePeriodSummaries();
-      }
-    });
-  }
-
-  async function updatePeriodSummaries() {
-    const nowMs = Date.now();
-    const last30DaysMs = nowMs - 30 * DAY_MS;
-    const last7DaysMs = nowMs - 7 * DAY_MS;
-    const last1DayMs = nowMs - DAY_MS;
-
-    // Use allSettled to log individual failures and still populate successful stats
-    const results = await Promise.allSettled([
-      fetchStats(last30DaysMs, nowMs),
-      fetchStats(last7DaysMs, nowMs),
-      fetchStats(last1DayMs, nowMs),
-      fetchJson("/api/latest_reading"),
-    ]);
-
-    const [monthResult, weekResult, dayResult, latestResult] = results;
-    const apiNames = ["30-day stats", "7-day stats", "1-day stats", "latest reading"];
-
-    results.forEach((result, idx) => {
-      if (result.status === "rejected") {
-        console.error(`[updatePeriodSummaries] ${apiNames[idx]} failed:`, result.reason);
-      }
-    });
-
-    const monthStats = monthResult.status === "fulfilled" ? monthResult.value : null;
-    const weekStats = weekResult.status === "fulfilled" ? weekResult.value : null;
-    const dayStats = dayResult.status === "fulfilled" ? dayResult.value : null;
-    const latestReading = latestResult.status === "fulfilled" ? latestResult.value : null;
-
-    // Populate "Real" values from successful API calls
-    if (monthStats) {
-      if (statMonthEnergy) statMonthEnergy.textContent = Fmt.n(monthStats.energy_used_kwh, 2);
-      if (statMonthCost) statMonthCost.textContent = Fmt.n((monthStats.energy_used_kwh || 0) * costPerKwh, 2);
-    }
-    if (weekStats) {
-      if (statWeekEnergy) statWeekEnergy.textContent = Fmt.n(weekStats.energy_used_kwh, 2);
-      if (statWeekCost) statWeekCost.textContent = Fmt.n((weekStats.energy_used_kwh || 0) * costPerKwh, 2);
-    }
-    if (dayStats) {
-      if (statDayEnergy) statDayEnergy.textContent = Fmt.n(dayStats.energy_used_kwh, 2);
-      if (statDayCost) statDayCost.textContent = Fmt.n((dayStats.energy_used_kwh || 0) * costPerKwh, 2);
-    }
-    if (latestReading) {
-      if (statCurrentConsumption) statCurrentConsumption.textContent = Fmt.n(latestReading.energy_in_kwh, 2);
-      if (statTotalCost) statTotalCost.textContent = Fmt.n((latestReading.energy_in_kwh || 0) * costPerKwh, 2);
-    }
-
-    // Populate "Typical" values (depends on avgDailyEnergyUsage from fetchEnergySummary)
-    if (avgDailyEnergyUsage) {
-      const avg30Days = avgDailyEnergyUsage * 30;
-      const avg7Days = avgDailyEnergyUsage * 7;
-      const avg1Day = avgDailyEnergyUsage;
-
-      if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = Fmt.n(avg30Days, 2);
-      if (statMonthAvgCost) statMonthAvgCost.textContent = Fmt.n(avg30Days * costPerKwh, 2);
-      if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = Fmt.n(avg7Days, 2);
-      if (statWeekAvgCost) statWeekAvgCost.textContent = Fmt.n(avg7Days * costPerKwh, 2);
-      if (statDayAvgEnergy) statDayAvgEnergy.textContent = Fmt.n(avg1Day, 2);
-      if (statDayAvgCost) statDayAvgCost.textContent = Fmt.n(avg1Day * costPerKwh, 2);
+  function rebuildTypicalSeries(dailyData = null) {
+    const days = dailyData || dayXs.map((sec) => ({ t: (sec - 43200) * 1000 }));
+    if (avgMode === "30d") {
+      const avgByDay = new Map(windowMovingAvg.map((d) => [getDateKey(new Date(d.t)), d.kwh]));
+      dayTypical = days.map((d) => avgByDay.get(getDateKey(new Date(d.t))) ?? null);
     } else {
-      if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = "–";
-      if (statMonthAvgCost) statMonthAvgCost.textContent = "–";
-      if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = "–";
-      if (statWeekAvgCost) statWeekAvgCost.textContent = "–";
-      if (statDayAvgEnergy) statDayAvgEnergy.textContent = "–";
-      if (statDayAvgCost) statDayAvgCost.textContent = "–";
+      dayTypical = days.map(() => avgDailyEnergyUsage);
     }
   }
 
+  // ── Data fetching ───────────────────────────────────────────────────────
   async function fetchStats(startMs, endMs, signal = null) {
     const qs = new URLSearchParams({ start: String(startMs), end: String(endMs) });
     const body = await fetchJson(`/api/stats?${qs.toString()}`, signal ? { signal } : {});
     return body.stats || {};
   }
 
+  async function fetchReadings({ incremental = false, signal = null } = {}) {
+    const qs = new URLSearchParams();
+    if (incremental && lastDataTimestamp) {
+      qs.set("start", String(lastDataTimestamp + 1));
+      qs.set("bucket_ms", String(loadedBucketMs ?? bucketMsForRange()));
+    } else {
+      loadedBucketMs = bucketMsForRange();
+      qs.set("start", String(range.startMs));
+      qs.set("end", String(range.endMs));
+      qs.set("bucket_ms", String(loadedBucketMs));
+    }
+    try {
+      const rows = await fetchJson(`/api/readings?${qs.toString()}`, signal ? { signal } : {});
+      const next = processReadingsData(rows || []);
+      if (incremental && xVals.length > 0) {
+        const lastSec = xVals[xVals.length - 1];
+        let from = next.xVals.length;
+        for (let i = 0; i < next.xVals.length; i++) {
+          if (next.xVals[i] > lastSec) {
+            from = i;
+            break;
+          }
+        }
+        if (from < next.xVals.length) {
+          xVals = xVals.concat(next.xVals.slice(from));
+          powerVals = powerVals.concat(next.yVals.slice(from));
+          meterVals = meterVals.concat(next.eVals.slice(from));
+        }
+        if (range.live) trimToWindow();
+      } else {
+        xVals = next.xVals;
+        powerVals = next.yVals;
+        meterVals = next.eVals;
+      }
+      if (xVals.length > 0) lastDataTimestamp = xVals[xVals.length - 1] * 1000;
+      recomputeDerived();
+      setChartData();
+      if (!incremental) setXScales();
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      console.error("[readings] fetch failed:", e);
+      reportFetchFailed();
+    } finally {
+      // Reveal even on failure so the loaders never hang; the status dot
+      // carries the offline signal.
+      if (!incremental) {
+        revealChart("power");
+        revealChart("meter");
+      }
+    }
+  }
+
+  function trimToWindow() {
+    const minSec = Math.floor(range.startMs / 1000);
+    let i = 0;
+    while (i < xVals.length && xVals[i] < minSec) i++;
+    if (i > 0) {
+      xVals = xVals.slice(i);
+      powerVals = powerVals.slice(i);
+      meterVals = meterVals.slice(i);
+    }
+  }
+
+  async function fetchWindowSummary() {
+    try {
+      const qs = new URLSearchParams({ start: String(range.startMs), end: String(range.endMs) });
+      const data = await fetchJson(`/api/energy_summary?${qs.toString()}`);
+      windowMovingAvg = data.moving_avg_30d || [];
+      rebuildDailySeries(data.daily || []);
+    } catch (e) {
+      console.error("[energySummary] window fetch failed:", e);
+      windowMovingAvg = [];
+      rebuildDailySeries([]);
+    } finally {
+      if (charts.daily) charts.daily.setData([dayXs, dayKwh, dayTypical]);
+      setXScales();
+      revealChart("daily");
+    }
+  }
+
+  /** Fixed 30-day summary: the typical baseline for tile deltas. */
+  async function fetchTileSummary() {
+    try {
+      const now = Date.now();
+      const qs = new URLSearchParams({ start: String(now - TILE_SUMMARY_LOOKBACK_MS), end: String(now) });
+      const data = await fetchJson(`/api/energy_summary?${qs.toString()}`);
+      avgDailyEnergyUsage = data.avg_daily ?? null;
+      // Tiles may have rendered before the baseline arrived — fill deltas in
+      renderWindowTiles();
+      renderPeriodTiles();
+    } catch (e) {
+      console.error("[energySummary] tile fetch failed:", e);
+    }
+  }
+
+  /**
+   * transitions-dev number pop-in: re-render the watt digits and replay the
+   * per-digit entry, but only when the value actually changed — the poller
+   * fires every few seconds and an unchanged number should sit still.
+   */
+  function setLiveDigits(str) {
+    const group = tile.livePower;
+    if (!group || group.textContent === str) return;
+    group.classList.remove("is-animating");
+    const chars = str.split("");
+    group.replaceChildren(
+      ...chars.map((ch, i) => {
+        const span = document.createElement("span");
+        span.className = "t-digit";
+        span.textContent = ch;
+        if (i === chars.length - 2) span.dataset.stagger = "1";
+        else if (i === chars.length - 1) span.dataset.stagger = "2";
+        return span;
+      })
+    );
+    void group.offsetHeight; // force reflow so the animation replays
+    group.classList.add("is-animating");
+  }
+
+  /** The live tile: current draw, reading time, and the meter total. */
+  function renderLiveTile(data) {
+    setSkeleton(liveTileEls, false);
+    const watts = data && data.w;
+    const stale = !data || data.stale;
+    if (tile.livePower) {
+      setLiveDigits(watts == null ? "–" : Fmt.n(watts, 0));
+      tile.livePower.classList.toggle("is-stale", Boolean(stale));
+    }
+    if (tile.liveTime) {
+      tile.liveTime.textContent = formatAge(data && data.age_s) || "–";
+    }
+  }
+
+  // ── Tiles ───────────────────────────────────────────────────────────────
+  function renderDelta(el, realKwh, days) {
+    if (!el) return;
+    el.classList.remove("delta-up", "delta-down");
+    if (realKwh == null || !avgDailyEnergyUsage || !days) {
+      el.textContent = "";
+      return;
+    }
+    const typical = avgDailyEnergyUsage * days;
+    if (typical <= 0) {
+      el.textContent = "";
+      return;
+    }
+    const pct = ((realKwh - typical) / typical) * 100;
+    const up = pct >= 0;
+    el.textContent = `${up ? "↑" : "↓"} ${Fmt.n(Math.abs(pct), 0)}% vs typical`;
+    el.classList.add(up ? "delta-up" : "delta-down");
+  }
+
+  function renderWindowTiles() {
+    const s = lastWindowStats;
+    if (!s) return;
+    const kwh = s.energy_used_kwh;
+    tile.energy.textContent = Fmt.n(kwh, 2);
+    tile.energyCost.textContent = Fmt.n(kwh != null ? kwh * costPerKwh : null, 2);
+    renderDelta(tile.energyDelta, kwh, (range.endMs - range.startMs) / DAY_MS);
+    tile.avgPower.textContent = Fmt.n(s.avg_power_watts, 0);
+    tile.minPower.textContent = Fmt.n(s.min_power_watts, 0);
+    tile.maxPower.textContent = Fmt.n(s.max_power_watts, 0);
+  }
+
+  async function updateWindowTiles() {
+    if (windowStatsController) windowStatsController.abort();
+    windowStatsController = new AbortController();
+    try {
+      lastWindowStats = await fetchStats(range.startMs, range.endMs, windowStatsController.signal);
+      renderWindowTiles();
+      setSkeleton(windowTileEls, false);
+    } catch (e) {
+      // A superseded (aborted) request keeps the skeleton for its successor
+      if (e.name === "AbortError") return;
+      console.error("[windowTiles] stats fetch failed:", e);
+      setSkeleton(windowTileEls, false);
+    }
+  }
+
+  function renderPeriodTiles() {
+    const p = lastPeriodStats;
+    const rows = [
+      [p.day, tile.day, tile.dayCost, tile.dayDelta, 1],
+      [p.week, tile.week, tile.weekCost, tile.weekDelta, 7],
+      [p.month, tile.month, tile.monthCost, tile.monthDelta, 30],
+    ];
+    for (const [stats, valueEl, costEl, deltaEl, days] of rows) {
+      if (!stats) continue;
+      const kwh = stats.energy_used_kwh;
+      valueEl.textContent = Fmt.n(kwh, 2);
+      costEl.textContent = Fmt.n(kwh != null ? kwh * costPerKwh : null, 2);
+      renderDelta(deltaEl, kwh, days);
+    }
+    if (p.latest && tile.meterTotal) {
+      tile.meterTotal.textContent = fmtGrouped(p.latest.energy_in_kwh, 2);
+    }
+  }
+
+  async function updatePeriodTiles() {
+    const now = Date.now();
+    const results = await Promise.allSettled([
+      fetchStats(now - DAY_MS, now),
+      fetchStats(now - 7 * DAY_MS, now),
+      fetchStats(now - 30 * DAY_MS, now),
+      fetchJson("/api/latest_reading"),
+    ]);
+    const names = ["1-day stats", "7-day stats", "30-day stats", "latest reading"];
+    results.forEach((r, i) => {
+      if (r.status === "rejected") console.error(`[periodTiles] ${names[i]} failed:`, r.reason);
+    });
+    const [day, week, month, latest] = results.map((r) => (r.status === "fulfilled" ? r.value : null));
+    lastPeriodStats = {
+      day: day ?? lastPeriodStats.day,
+      week: week ?? lastPeriodStats.week,
+      month: month ?? lastPeriodStats.month,
+      latest: latest ?? lastPeriodStats.latest,
+    };
+    renderPeriodTiles();
+    setSkeleton(periodTileEls, false);
+  }
+
+  // ── Range control ───────────────────────────────────────────────────────
+  function applyPreset(key) {
+    range.presetKey = key;
+    range.live = true;
+    refreshLiveWindow();
+    setSegmentedActive(key);
+    if (btnLive) btnLive.classList.add("hidden");
+    // Fire independently — each section reveals as its own data lands
+    resetCharts();
+    setSkeleton(windowTileEls, true);
+    fetchReadings();
+    fetchWindowSummary();
+    updateWindowTiles();
+  }
+
+  function applyCustomRange(startMs, endMs) {
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
+    range.startMs = startMs;
+    range.endMs = endMs;
+    range.live = false;
+    setSegmentedActive(null);
+    if (btnLive) btnLive.classList.remove("hidden");
+    setXScales();
+    updateWindowTiles();
+    if (bucketMsForRange() !== loadedBucketMs) {
+      // The new duration crosses a resolution tier — refetch at the finer
+      // (or coarser) bucket, then re-apply the scales on the fresh data.
+      fetchReadings().then(setXScales);
+    } else {
+      // Same tier: just recompute the view-dependent derived series
+      recomputeDerived();
+      setChartData();
+    }
+  }
+
+  function backToLive() {
+    if (range.live) return;
+    applyPreset(range.presetKey);
+  }
+
+  // ── Polling ─────────────────────────────────────────────────────────────
+  async function poll() {
+    if (pollController) pollController.abort();
+    pollController = new AbortController();
+    await fetchReadings({ incremental: true, signal: pollController.signal });
+    if (range.live) {
+      refreshLiveWindow();
+      setXScales();
+      updateWindowTiles();
+    }
+    updatePeriodTiles();
+    pollTimer = setTimeout(poll, POLLING_MS);
+  }
+
+  // ── Controls ────────────────────────────────────────────────────────────
+  rangeButtons.forEach((btn) => {
+    btn.addEventListener("click", () => applyPreset(btn.dataset.range));
+  });
+
+  if (btnLive) btnLive.addEventListener("click", backToLive);
+
+  if (btnRefresh) {
+    btnRefresh.addEventListener("click", async () => {
+      if (btnRefresh.disabled) return;
+      btnRefresh.disabled = true;
+      btnRefresh.classList.add("btn-loading");
+      try {
+        refreshLiveWindow();
+        resetCharts();
+        setSkeleton(windowTileEls, true);
+        setSkeleton(periodTileEls, true);
+        // Sections reveal independently; the button spins until all settle
+        await Promise.allSettled([
+          fetchReadings(),
+          fetchWindowSummary(),
+          fetchTileSummary(),
+          updateWindowTiles(),
+          updatePeriodTiles(),
+        ]);
+      } finally {
+        btnRefresh.disabled = false;
+        btnRefresh.classList.remove("btn-loading");
+      }
+    });
+  }
+
+  if (btnToggleScale) {
+    btnToggleScale.addEventListener("click", () => {
+      powerScaleMode = powerScaleMode === "auto" ? "fixed" : "auto";
+      btnToggleScale.textContent = powerScaleMode === "auto" ? "Auto scale" : "Fixed scale";
+      // The y-range is baked into the uPlot options, so rebuild this chart
+      if (charts.power) {
+        charts.power.destroy();
+        charts.power = null;
+      }
+      initPowerChart();
+      applySeriesShow("power");
+      if (charts.power) {
+        charts.power.setData([xVals, powerVals, rollingVals]);
+        charts.power.setScale("x", { min: range.startMs / 1000, max: range.endMs / 1000 });
+      }
+    });
+  }
+
+  if (btnToggleAvgMode) {
+    btnToggleAvgMode.addEventListener("click", () => {
+      avgMode = avgMode === "30d" ? "total" : "30d";
+      btnToggleAvgMode.textContent = avgMode === "30d" ? "30d avg" : "Total avg";
+      if (typicalChipLabel) typicalChipLabel.textContent = avgMode === "30d" ? "30d avg" : "Total avg";
+      rebuildTypicalSeries();
+      if (charts.daily) charts.daily.setData([dayXs, dayKwh, dayTypical]);
+    });
+  }
+
+  // Legend chips toggle their series
+  document.querySelectorAll(".widget").forEach((widget) => {
+    const chartKey = widget.classList.contains("widget--power")
+      ? "power"
+      : widget.classList.contains("widget--daily")
+        ? "daily"
+        : "meter";
+    widget.querySelectorAll(".legend-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const idx = Number(chip.dataset.series);
+        const show = !seriesShow[chartKey][idx];
+        seriesShow[chartKey][idx] = show;
+        chip.classList.toggle("inactive", !show);
+        chip.setAttribute("aria-pressed", String(show));
+        const u = charts[chartKey];
+        if (u && u.series[idx]) u.setSeries(idx, { show });
+      });
+    });
+  });
+
+  function initCostInput() {
+    costPerKwh = loadCostPerKwh();
+    if (!costInput) return;
+    costInput.value = String(costPerKwh);
+    costInput.addEventListener("change", () => {
+      const value = parseFloat(costInput.value);
+      if (!Number.isNaN(value) && value >= 0) {
+        costPerKwh = value;
+        saveCostPerKwh(value);
+        renderWindowTiles();
+        renderPeriodTiles();
+      }
+    });
+  }
+
+  window.addEventListener("resize", () => {
+    Object.values(charts).forEach((u) => {
+      if (u) u.setSize(chartSize(u.root.parentElement));
+    });
+    movePill(activeRangeButton(), false);
+  });
+
+  window.addEventListener("pagehide", () => {
+    clearTimeout(pollTimer);
+    if (pollController) pollController.abort();
+  });
+
+  // ── Init ────────────────────────────────────────────────────────────────
+  resetCharts();
+  setSkeleton([...windowTileEls, ...periodTileEls, ...liveTileEls], true);
+  initCharts();
+  initCostInput();
+  startLivePower(null, { statusEl: statusConn, onUpdate: renderLiveTile });
+  // First paint: snap the pill to the active preset without a transition
+  requestAnimationFrame(() => movePill(activeRangeButton(), false));
+
+  // Everything fires at once; each section reveals as soon as its data lands.
+  fetchReadings().then(() => {
+    pollTimer = setTimeout(poll, POLLING_MS);
+  });
+  fetchWindowSummary();
+  fetchTileSummary();
+  updateWindowTiles();
+  updatePeriodTiles();
 })();
