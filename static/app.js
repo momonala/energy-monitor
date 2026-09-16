@@ -101,11 +101,9 @@
   const POLLING_MS = 10000;
   const MIN_DRAG_PX = 10;
   const LIVE_THRESHOLD_SEC = 120;
-  const SECONDS_PER_DAY = 86_400;
   const HOUR_MS = 60 * 60 * 1000;
   const DAY_MS = 24 * HOUR_MS;
   const DEFAULT_CHART_LOOKBACK_MS = 7 * DAY_MS;
-  const WS_PER_KWH = 3_600_000;  // Watt-seconds → kWh: divide by this
   const EMA_ALPHA = 0.0001;      // ≈ 2-day smoothing at 10s sample rate
 
   let lastDataTimestamp = null;
@@ -292,7 +290,7 @@
       u.setScale("x", { min: startMs / 1000, max: endMs / 1000 });
     }
     renderSelection();
-    computeStatsLocal(startMs, endMs);
+    updateSelectionStats(startMs, endMs);
   }
 
   function clearSelection() {
@@ -403,7 +401,7 @@
     }
 
     if (selection.start && selection.end) {
-      computeStatsLocal(selection.start, selection.end);
+      updateSelectionStats(selection.start, selection.end);
     }
   }
 
@@ -464,70 +462,35 @@
     }
   }
 
-  function computeStatsLocal(startMs, endMs) {
-    const startSec = Math.floor(startMs / 1000);
-    const endSec = Math.floor(endMs / 1000);
-    if (!xVals.length || endSec <= startSec) return;
-    // Find index bounds
-    let i0 = 0;
-    while (i0 < xVals.length && xVals[i0] < startSec) i0++;
-    let i1 = xVals.length - 1;
-    while (i1 >= 0 && xVals[i1] > endSec) i1--;
-    if (i1 < i0) return;
-    const ySlice = yVals.slice(i0, i1 + 1).filter((v) => Number.isFinite(v));
-    const count = ySlice.length;
-    const minP = count ? Math.min(...ySlice) : null;
-    const maxP = count ? Math.max(...ySlice) : null;
-    const avgP = count ? ySlice.reduce((a, b) => a + b, 0) / count : null;
-    // Energy used from eVals if available
-    let energyUsed = null;
-    let eStart = null;
-    let eEnd = null;
-    for (let i = i0; i <= i1; i++) {
-      if (eVals[i] != null && Number.isFinite(eVals[i])) {
-        eStart = eVals[i];
-        break;
-      }
+  let selectionStatsController = null;
+
+  /** Selection stats come from /api/stats so they match the server's raw-row numbers
+   * (the chart only holds 2-min max-bucketed data). */
+  async function updateSelectionStats(startMs, endMs) {
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
+    renderTypicalForRange(startMs, endMs);
+    if (selectionStatsController) selectionStatsController.abort();
+    selectionStatsController = new AbortController();
+    try {
+      const stats = await fetchStats(startMs, endMs, selectionStatsController.signal);
+      const energyUsed = stats.energy_used_kwh;
+      statEnergy.textContent = Fmt.n(energyUsed, 2);
+      if (statCostRange) statCostRange.textContent = Fmt.n(energyUsed != null ? energyUsed * costPerKwh : null, 2);
+      statAvg.textContent = Fmt.n(stats.avg_power_watts, 1);
+      statMax.textContent = Fmt.n(stats.max_power_watts, 0);
+      statMin.textContent = Fmt.n(stats.min_power_watts, 0);
+      statCount.textContent = stats.count != null ? String(stats.count) : "–";
+    } catch (e) {
+      if (e.name === "AbortError") return;
+      console.error("[selectionStats] fetch failed:", e);
     }
-    for (let i = i1; i >= i0; i--) {
-      if (eVals[i] != null && Number.isFinite(eVals[i])) {
-        eEnd = eVals[i];
-        break;
-      }
-    }
-    if (eStart != null && eEnd != null) {
-      energyUsed = eEnd - eStart;
-    } else {
-      // Fallback: integrate power to energy (kWh) with trapezoidal rule
-      let sumWs = 0;
-      for (let i = i0 + 1; i <= i1; i++) {
-        const dtSec = xVals[i] - xVals[i - 1];
-        if (dtSec > 0 && Number.isFinite(yVals[i]) && Number.isFinite(yVals[i - 1])) {
-          const wAvg = (yVals[i] + yVals[i - 1]) / 2; // W
-          sumWs += wAvg * dtSec; // W*s
-        }
-      }
-      energyUsed = sumWs / WS_PER_KWH;
-    }
-    statEnergy.textContent = Fmt.n(energyUsed, 2);
-    if (statCostRange) {
-      const cost = energyUsed != null ? energyUsed * costPerKwh : null;
-      statCostRange.textContent = Fmt.n(cost, 2);
-    }
-    statAvg.textContent = Fmt.n(avgP, 1);
-    statMax.textContent = Fmt.n(maxP, 0);
-    statMin.textContent = Fmt.n(minP, 0);
-    statCount.textContent = String(count);
-    
-    // Calculate average energy consumption based on historical average
+  }
+
+  function renderTypicalForRange(startMs, endMs) {
     if (statAvgEnergy && avgDailyEnergyUsage) {
-      const durationDays = (endSec - startSec) / SECONDS_PER_DAY;
-      const avgEnergy = avgDailyEnergyUsage * durationDays;
+      const avgEnergy = avgDailyEnergyUsage * ((endMs - startMs) / DAY_MS);
       statAvgEnergy.textContent = Fmt.n(avgEnergy, 2);
-      if (statAvgCost) {
-        const avgCost = avgEnergy * costPerKwh;
-        statAvgCost.textContent = Fmt.n(avgCost, 2);
-      }
+      if (statAvgCost) statAvgCost.textContent = Fmt.n(avgEnergy * costPerKwh, 2);
     } else {
       if (statAvgEnergy) statAvgEnergy.textContent = "–";
       if (statAvgCost) statAvgCost.textContent = "–";
@@ -965,9 +928,9 @@
     }
   }
 
-  async function fetchStats(startMs, endMs) {
+  async function fetchStats(startMs, endMs, signal = null) {
     const qs = new URLSearchParams({ start: String(startMs), end: String(endMs) });
-    const body = await fetchJson(`/api/stats?${qs.toString()}`);
+    const body = await fetchJson(`/api/stats?${qs.toString()}`, signal ? { signal } : {});
     return body.stats || {};
   }
 
