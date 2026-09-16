@@ -161,7 +161,6 @@ Query params:
 
 - `start` - ISO-8601 string or ms since epoch (optional)
 - `end` - ISO-8601 string or ms since epoch (optional)
-- `after` - Unix timestamp; returns only records after this time (for incremental updates)
 
 Response:
 
@@ -178,7 +177,7 @@ Response:
 ### `/api/live_power`
 
 No query params. Deliberately slim — it is polled every 5s by every open dashboard, so it selects only
-`(timestamp, power_watts)` instead of hydrating the full row with its `raw_payload` blob. Never cached.
+`(timestamp_ms, power_watts)` instead of hydrating the full row. Never cached.
 
 ```json
 {"t": 1701432000000, "w": 512.3, "age_s": 4.2, "stale": false}
@@ -247,7 +246,7 @@ Response:
 
 ```
 EnergyReading
-├── timestamp: DateTime (PK, indexed)
+├── timestamp_ms: Integer (PK; UTC milliseconds since epoch)
 ├── meter_id: String
 ├── power_watts: Float
 ├── energy_in_kwh: Float

@@ -56,7 +56,7 @@ def sample_readings(test_db):
     for i in range(72):  # 3 days, hourly
         timestamp = base_time + timedelta(hours=i)
         reading = EnergyReading(
-            timestamp=timestamp,
+            timestamp_ms=int(timestamp.timestamp() * 1000),
             meter_id="test_meter",
             power_watts=500.0 + (i * 10),
             energy_in_kwh=1000.0 + (i * 0.5),

@@ -51,7 +51,7 @@ def test_daily_energy_usage_marks_partial_days(test_db):
             ts = today_start + timedelta(hours=i)
             session.add(
                 EnergyReading(
-                    timestamp=ts,
+                    timestamp_ms=int(ts.timestamp() * 1000),
                     meter_id="test",
                     power_watts=500.0,
                     energy_in_kwh=100.0 + i * 0.5,
@@ -210,7 +210,7 @@ def test_latest_power_returns_newest_reading(test_db):
     fresh_ts = datetime.now(local_timezone())
     session.add(
         EnergyReading(
-            timestamp=fresh_ts - timedelta(hours=1),
+            timestamp_ms=int((fresh_ts - timedelta(hours=1)).timestamp() * 1000),
             meter_id="test_meter",
             power_watts=999.0,
             energy_in_kwh=1999.0,
@@ -219,7 +219,7 @@ def test_latest_power_returns_newest_reading(test_db):
     )
     session.add(
         EnergyReading(
-            timestamp=fresh_ts,
+            timestamp_ms=int(fresh_ts.timestamp() * 1000),
             meter_id="test_meter",
             power_watts=1234.5,
             energy_in_kwh=2000.0,
@@ -251,7 +251,7 @@ def test_latest_power_flags_stale_reading(test_db):
     session = test_db()
     session.add(
         EnergyReading(
-            timestamp=datetime.now(local_timezone()) - timedelta(minutes=10),
+            timestamp_ms=int((datetime.now(local_timezone()) - timedelta(minutes=10)).timestamp() * 1000),
             meter_id="test_meter",
             power_watts=300.0,
             energy_in_kwh=1000.0,

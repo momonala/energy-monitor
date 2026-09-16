@@ -1,11 +1,11 @@
 import os
-import sqlite3
+import time
 from datetime import datetime
 from datetime import timedelta
 
 import sqlalchemy
+from sqlalchemy import BigInteger
 from sqlalchemy import Column
-from sqlalchemy import DateTime
 from sqlalchemy import Float
 from sqlalchemy import String
 from sqlalchemy import create_engine
@@ -25,10 +25,16 @@ from src.observability import metrics
 
 logger = get_logger(__name__)
 
-# Python 3.12 deprecated sqlite3's built-in datetime adapter. Register an explicit
-# one matching SQLAlchemy's SQLite DateTime storage format (naive, space-separated,
-# 6-digit microseconds) so raw-SQL bind params compare correctly against ORM-written rows.
-sqlite3.register_adapter(datetime, lambda dt: dt.replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S.%f"))
+MS_PER_HOUR = 3_600_000
+MS_PER_DAY = 86_400_000
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _to_ms(dt: datetime) -> int:
+    return int(dt.timestamp() * 1000)
 
 
 class NegativeEnergyError(ValueError):
@@ -70,14 +76,9 @@ Base = declarative_base()
 class EnergyReading(Base):
     __tablename__ = "energy_readings"
 
-    timestamp = Column(
-        DateTime,
-        default=lambda: datetime.now(local_timezone()),
-        nullable=False,
-        index=True,
-        primary_key=True,
-    )
-    meter_id = Column(String(255), nullable=True, index=True)
+    # UTC milliseconds since epoch
+    timestamp_ms = Column(BigInteger, default=_now_ms, nullable=False, primary_key=True)
+    meter_id = Column(String(255), nullable=True)
     power_watts = Column(Float, nullable=True)
     energy_in_kwh = Column(Float, nullable=True)
     energy_out_kwh = Column(Float, nullable=True)
@@ -87,7 +88,7 @@ class EnergyReading(Base):
 
     def __repr__(self):
         return (
-            f"EnergyReading(timestamp={self.timestamp}, meter_id={self.meter_id}, "
+            f"EnergyReading(timestamp_ms={self.timestamp_ms}, meter_id={self.meter_id}, "
             f"power_watts={self.power_watts}, energy_in_kwh={self.energy_in_kwh}, "
             f"energy_out_kwh={self.energy_out_kwh})"
         )
@@ -159,7 +160,7 @@ def save_energy_reading(tasmota_payload: dict):
     """Persist a single MT681 energy reading payload."""
     mt_payload = tasmota_payload["MT681"]
     fields = _normalize_mt681_payload(mt_payload)
-    timestamp = datetime.now(local_timezone())
+    timestamp_ms = _now_ms()
     reading = EnergyReading(
         meter_id=fields["meter_id"],
         power_watts=fields["power_watts"],
@@ -168,7 +169,7 @@ def save_energy_reading(tasmota_payload: dict):
         power_phase_1_watts=fields["power_phase_1_watts"],
         power_phase_2_watts=fields["power_phase_2_watts"],
         power_phase_3_watts=fields["power_phase_3_watts"],
-        timestamp=timestamp,
+        timestamp_ms=timestamp_ms,
     )
 
     try:
@@ -179,27 +180,29 @@ def save_energy_reading(tasmota_payload: dict):
                 session.refresh(reading)
         metrics.increment("db.readings.saved")
         logger.debug(
-            "Saved energy reading: meter_id=%s power=%sW E_in=%s E_out=%s timestamp=%s",
+            "Saved energy reading: meter_id=%s power=%sW E_in=%s E_out=%s timestamp_ms=%s",
             reading.meter_id,
             reading.power_watts,
             reading.energy_in_kwh,
             reading.energy_out_kwh,
-            timestamp.isoformat(),
+            timestamp_ms,
         )
     except sqlalchemy.exc.IntegrityError:
         metrics.increment("db.readings.duplicate")
-        logger.warning(f"Reading already exists for {timestamp=}")
+        logger.warning(f"Reading already exists for {timestamp_ms=}")
 
 
 def latest_energy_reading() -> dict | None:
     """Get the latest energy reading as a plain dict, or None if the DB is empty."""
     with SessionLocal() as session:
-        reading = session.query(EnergyReading).order_by(EnergyReading.timestamp.desc()).first()
+        reading = session.query(EnergyReading).order_by(EnergyReading.timestamp_ms.desc()).first()
         if reading is None:
             return None
         fields = dict(reading.__dict__)
         fields.pop("_sa_instance_state")
-        fields["timestamp"] = fields["timestamp"].isoformat()
+        fields["timestamp"] = datetime.fromtimestamp(
+            fields["timestamp_ms"] / 1000, tz=local_timezone()
+        ).isoformat()
         return fields
 
 
@@ -212,17 +215,16 @@ def latest_power() -> dict:
     """
     with SessionLocal() as session:
         row = (
-            session.query(EnergyReading.timestamp, EnergyReading.power_watts)
-            .order_by(EnergyReading.timestamp.desc())
+            session.query(EnergyReading.timestamp_ms, EnergyReading.power_watts)
+            .order_by(EnergyReading.timestamp_ms.desc())
             .first()
         )
     if row is None:
         return {"t": None, "w": None, "age_s": None, "stale": True}
 
-    # Timestamps are stored as naive local datetimes (see save_energy_reading).
-    age_s = (datetime.now() - row.timestamp).total_seconds()
+    age_s = (_now_ms() - row.timestamp_ms) / 1000
     return {
-        "t": int(row.timestamp.timestamp() * 1000),
+        "t": row.timestamp_ms,
         "w": row.power_watts,
         "age_s": round(age_s, 1),
         "stale": age_s > LIVE_POWER_STALE_SECONDS,
@@ -236,16 +238,14 @@ def get_monthly_avg_daily_usage() -> float:
     If you have less than a year of data (e.g. 4 months), uses that span.
     Returns kWh/day.
     """
-    tz = local_timezone()
-    now = datetime.now(tz)
-    year_ago = now - timedelta(days=YEARLY_AVG_DAYS)
+    year_ago_ms = _now_ms() - YEARLY_AVG_DAYS * MS_PER_DAY
 
     with SessionLocal() as session:
-        latest = session.query(EnergyReading).order_by(EnergyReading.timestamp.desc()).first()
+        latest = session.query(EnergyReading).order_by(EnergyReading.timestamp_ms.desc()).first()
         oldest_in_window = (
             session.query(EnergyReading)
-            .filter(EnergyReading.timestamp >= year_ago)
-            .order_by(EnergyReading.timestamp.asc())
+            .filter(EnergyReading.timestamp_ms >= year_ago_ms)
+            .order_by(EnergyReading.timestamp_ms.asc())
             .first()
         )
 
@@ -255,7 +255,7 @@ def get_monthly_avg_daily_usage() -> float:
             raise ValueError("Missing energy data")
 
         energy_diff = latest.energy_in_kwh - oldest_in_window.energy_in_kwh
-        days_diff = (latest.timestamp - oldest_in_window.timestamp).total_seconds() / 86400
+        days_diff = (latest.timestamp_ms - oldest_in_window.timestamp_ms) / MS_PER_DAY
         if days_diff <= 0:
             raise ValueError("Invalid time span")
         return energy_diff / days_diff
@@ -265,9 +265,7 @@ def num_energy_readings_last_hour() -> int:
     """Get the number of energy readings in the last hour."""
     with SessionLocal() as session:
         return (
-            session.query(EnergyReading)
-            .filter(EnergyReading.timestamp >= datetime.now(local_timezone()) - timedelta(hours=1))
-            .count()
+            session.query(EnergyReading).filter(EnergyReading.timestamp_ms >= _now_ms() - MS_PER_HOUR).count()
         )
 
 
@@ -280,11 +278,10 @@ def num_total_energy_readings() -> int:
 def time_since_last_reading() -> timedelta | None:
     """Get the time elapsed since the most recent energy reading, or None if the DB is empty."""
     with SessionLocal() as session:
-        last_timestamp = session.query(func.max(EnergyReading.timestamp)).scalar()
-    if last_timestamp is None:
+        last_ms = session.query(func.max(EnergyReading.timestamp_ms)).scalar()
+    if last_ms is None:
         return None
-    # Timestamps are stored as naive local datetimes (see save_energy_reading).
-    return datetime.now() - last_timestamp
+    return timedelta(milliseconds=_now_ms() - last_ms)
 
 
 def _format_timedelta(td: timedelta) -> str:
@@ -357,35 +354,32 @@ def get_readings(
     Returns a list of dicts with timestamp (ms since epoch), power_watts, and energy_in_kwh.
     Aggregation is done in SQL so we never load full raw rows for large ranges.
     """
-    tz = local_timezone()
-    start_bound = start.astimezone(tz) if start is not None else datetime.now(tz) - timedelta(weeks=52)
-    end_bound = end.astimezone(tz) if end is not None else datetime.now(tz)
-    bucket = func.strftime("%s", EnergyReading.timestamp) / 120
+    start_ms = _to_ms(start) if start is not None else _now_ms() - DEFAULT_LOOKBACK_WEEKS * 7 * MS_PER_DAY
+    end_ms = _to_ms(end) if end is not None else _now_ms()
+    bucket = EnergyReading.timestamp_ms // 120_000
     with metrics.timed("db.get_readings"):
         with SessionLocal() as session:
             rows = (
                 session.query(
-                    func.max(EnergyReading.timestamp).label("timestamp"),
+                    func.max(EnergyReading.timestamp_ms).label("timestamp_ms"),
                     func.max(EnergyReading.power_watts).label("power_watts"),
                     func.max(EnergyReading.energy_in_kwh).label("energy_in_kwh"),
                 )
                 .filter(
-                    EnergyReading.timestamp >= start_bound,
-                    EnergyReading.timestamp <= end_bound,
+                    EnergyReading.timestamp_ms >= start_ms,
+                    EnergyReading.timestamp_ms <= end_ms,
                 )
                 .group_by(bucket)
-                .order_by(func.max(EnergyReading.timestamp))
+                .order_by(func.max(EnergyReading.timestamp_ms))
                 .all()
             )
 
     if rows:
         logger.debug(
-            f"[get_readings] Found {len(rows)} 2-min buckets for {start_bound=} {end_bound=}: "
+            f"[get_readings] Found {len(rows)} 2-min buckets for {start_ms=} {end_ms=}: "
             f"oldest {rows[0][0]}, latest {rows[-1][0]}"
         )
-    return [
-        {"t": int(r.timestamp.timestamp() * 1000), "p": r.power_watts, "e": r.energy_in_kwh} for r in rows
-    ]
+    return [{"t": r.timestamp_ms, "p": r.power_watts, "e": r.energy_in_kwh} for r in rows]
 
 
 def get_daily_energy_usage(
@@ -398,43 +392,38 @@ def get_daily_energy_usage(
     Partial days are those with less than 23 hours of coverage.
     """
     tz = local_timezone()
-    now = datetime.now(tz)
-    start_bound = start.astimezone(tz) if start is not None else now - timedelta(weeks=DEFAULT_LOOKBACK_WEEKS)
-    end_bound = end.astimezone(tz) if end is not None else now
+    start_ms = _to_ms(start) if start is not None else _now_ms() - DEFAULT_LOOKBACK_WEEKS * 7 * MS_PER_DAY
+    end_ms = _to_ms(end) if end is not None else _now_ms()
 
     sql = text("""
     WITH filtered AS (
-        SELECT timestamp, energy_in_kwh, date(timestamp) AS d
+        SELECT timestamp_ms, energy_in_kwh, date(timestamp_ms / 1000, 'unixepoch', 'localtime') AS d
         FROM energy_readings
-        WHERE timestamp >= :start_bound AND timestamp <= :end_bound
+        WHERE timestamp_ms >= :start_ms AND timestamp_ms <= :end_ms
           AND energy_in_kwh IS NOT NULL AND energy_in_kwh > 0
     ),
     ranked AS (
         SELECT *,
-            row_number() OVER (PARTITION BY d ORDER BY timestamp ASC) AS rn_asc,
-            row_number() OVER (PARTITION BY d ORDER BY timestamp DESC) AS rn_desc
+            row_number() OVER (PARTITION BY d ORDER BY timestamp_ms ASC) AS rn_asc,
+            row_number() OVER (PARTITION BY d ORDER BY timestamp_ms DESC) AS rn_desc
         FROM filtered
     )
     SELECT d,
-        min(CASE WHEN rn_asc = 1 THEN timestamp END) AS first_ts,
-        max(CASE WHEN rn_desc = 1 THEN timestamp END) AS last_ts,
+        min(CASE WHEN rn_asc = 1 THEN timestamp_ms END) AS first_ms,
+        max(CASE WHEN rn_desc = 1 THEN timestamp_ms END) AS last_ms,
         min(CASE WHEN rn_asc = 1 THEN energy_in_kwh END) AS first_energy,
         max(CASE WHEN rn_desc = 1 THEN energy_in_kwh END) AS last_energy
     FROM ranked
     GROUP BY d
-    HAVING first_ts IS NOT NULL AND last_ts IS NOT NULL AND first_energy IS NOT NULL AND last_energy IS NOT NULL
+    HAVING first_ms IS NOT NULL AND last_ms IS NOT NULL AND first_energy IS NOT NULL AND last_energy IS NOT NULL
     ORDER BY d
     """)
 
     with SessionLocal() as session:
-        rows = session.execute(
-            sql,
-            {"start_bound": start_bound, "end_bound": end_bound},
-        ).fetchall()
+        rows = session.execute(sql, {"start_ms": start_ms, "end_ms": end_ms}).fetchall()
 
     result = []
-    for row in rows:
-        d_str, first_ts, last_ts, first_energy, last_energy = row
+    for d_str, first_ms, last_ms, first_energy, last_energy in rows:
         daily_kwh = float(last_energy) - float(first_energy)
         if daily_kwh < 0:
             raise NegativeEnergyError(
@@ -443,23 +432,11 @@ def get_daily_energy_usage(
                 "Cumulative meter may have reset or data is out of order."
             )
 
-        # SQLite may return timestamp as str; parse to datetime for subtraction
-        if isinstance(first_ts, str):
-            first_ts = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
-        if isinstance(last_ts, str):
-            last_ts = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
-        if first_ts.tzinfo is None:
-            first_ts = first_ts.replace(tzinfo=tz)
-        if last_ts.tzinfo is None:
-            last_ts = last_ts.replace(tzinfo=tz)
-
-        hours_covered = (last_ts - first_ts).total_seconds() / 3600
+        hours_covered = (last_ms - first_ms) / MS_PER_HOUR
         is_partial = hours_covered < 23
 
-        local_noon = datetime.combine(first_ts.date(), datetime.min.time().replace(hour=12), tzinfo=tz)
-        result.append(
-            {"t": int(local_noon.timestamp() * 1000), "kwh": float(daily_kwh), "is_partial": is_partial}
-        )
+        local_noon = datetime.strptime(d_str, "%Y-%m-%d").replace(hour=12, tzinfo=tz)
+        result.append({"t": _to_ms(local_noon), "kwh": float(daily_kwh), "is_partial": is_partial})
 
     return result
 
@@ -489,18 +466,20 @@ def get_stats(start: datetime, end: datetime) -> dict:
       - min_power_watts, max_power_watts, avg_power_watts
       - count
     """
+    start_ms = _to_ms(start)
+    end_ms = _to_ms(end)
     with metrics.timed("db.get_stats"):
         with SessionLocal() as session:
             first_row = (
                 session.query(EnergyReading)
-                .filter(EnergyReading.timestamp >= start, EnergyReading.timestamp <= end)
-                .order_by(EnergyReading.timestamp.asc())
+                .filter(EnergyReading.timestamp_ms >= start_ms, EnergyReading.timestamp_ms <= end_ms)
+                .order_by(EnergyReading.timestamp_ms.asc())
                 .first()
             )
             last_row = (
                 session.query(EnergyReading)
-                .filter(EnergyReading.timestamp >= start, EnergyReading.timestamp <= end)
-                .order_by(EnergyReading.timestamp.desc())
+                .filter(EnergyReading.timestamp_ms >= start_ms, EnergyReading.timestamp_ms <= end_ms)
+                .order_by(EnergyReading.timestamp_ms.desc())
                 .first()
             )
             agg = (
@@ -510,7 +489,7 @@ def get_stats(start: datetime, end: datetime) -> dict:
                     func.avg(EnergyReading.power_watts),
                     func.count(EnergyReading.power_watts),
                 )
-                .filter(EnergyReading.timestamp >= start, EnergyReading.timestamp <= end)
+                .filter(EnergyReading.timestamp_ms >= start_ms, EnergyReading.timestamp_ms <= end_ms)
                 .one()
             )
 
@@ -523,8 +502,8 @@ def get_stats(start: datetime, end: datetime) -> dict:
             if energy_used < 0:
                 raise NegativeEnergyError(
                     f"Negative energy_used_kwh={energy_used:.4f} in window start={start!s} end={end!s}. "
-                    f"First reading: ts={first_row.timestamp!s} energy_in_kwh={first_row.energy_in_kwh}. "
-                    f"Last reading: ts={last_row.timestamp!s} energy_in_kwh={last_row.energy_in_kwh}. "
+                    f"First reading: ts={first_row.timestamp_ms} energy_in_kwh={first_row.energy_in_kwh}. "
+                    f"Last reading: ts={last_row.timestamp_ms} energy_in_kwh={last_row.energy_in_kwh}. "
                     "Cumulative meter may have reset or data is out of order."
                 )
 
