@@ -17,7 +17,6 @@ def timed(func):
         start = time.perf_counter()
         result = func(*args, **kwargs)
         elapsed_ms = (time.perf_counter() - start) * 1000
-        # Format args for logging
         args_str = ", ".join(repr(a) for a in args) if args else ""
         kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items()) if kwargs else ""
         params = ", ".join(filter(None, [args_str, kwargs_str])) or "no args"
@@ -32,27 +31,24 @@ def local_timezone():
     return datetime.now(timezone.utc).astimezone().tzinfo
 
 
-def parse_time_param(value: str | None):
+def parse_time_param(value: str | None) -> datetime | None:
     """
     Parse a time query parameter. Accepts:
       - milliseconds since epoch (int)
       - ISO-8601 string
-    Returns a timezone-aware UTC datetime or None.
+    Returns a timezone-aware datetime, or None if the value is empty or unparseable.
     """
     if not value:
         return None
     try:
-        # ms since epoch
         ms = int(value)
-
         return datetime.fromtimestamp(ms / 1000.0, tz=local_timezone())
-    except (ValueError, TypeError):
+    except ValueError:
         pass
     try:
-
         dt = datetime.fromisoformat(value)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=local_timezone())
-        return dt.astimezone(tz=dt.tzinfo)
-    except Exception:
+        return dt
+    except ValueError:
         return None

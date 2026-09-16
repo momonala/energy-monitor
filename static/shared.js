@@ -31,8 +31,6 @@ function readChartTheme() {
   };
 }
 
-const ChartColors = readChartTheme();
-
 // =============================================================================
 // Formatting Helpers
 // =============================================================================
@@ -312,115 +310,8 @@ function saveCostPerKwh(cost) {
 }
 
 // =============================================================================
-// Preset Periods (compare page and shared date logic)
-// =============================================================================
-/** Preset ids for getPresetPeriod. */
-const PRESET_IDS = ["today", "this_week", "this_month", "last_week", "last_month"];
-
-/**
- * Get start and end timestamps (ms) and label for a preset period.
- * Week starts Sunday to match main dashboard behaviour.
- * @param {string} presetId - One of: today, this_week, this_month, last_week, last_month
- * @returns {{ startMs: number, endMs: number, label: string }} - Bounds in ms and display label
- */
-function getPresetPeriod(presetId) {
-  const now = new Date();
-  const start = new Date(now);
-  const end = new Date(now);
-  let label = presetId;
-
-  switch (presetId) {
-    case "today": {
-      start.setHours(0, 0, 0, 0);
-      end.setTime(now.getTime());
-      label = "Today";
-      break;
-    }
-    case "this_week": {
-      const day = now.getDay();
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - day);
-      end.setTime(now.getTime());
-      label = "This week";
-      break;
-    }
-    case "this_month": {
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-      end.setTime(now.getTime());
-      label = "This month";
-      break;
-    }
-    case "last_week": {
-      const day = now.getDay();
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - day - 7);
-      end.setTime(start.getTime());
-      end.setDate(end.getDate() + 6);
-      end.setHours(23, 59, 59, 999);
-      label = "Last week";
-      break;
-    }
-    case "last_month": {
-      start.setMonth(start.getMonth() - 1);
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-      end.setTime(start.getTime());
-      end.setMonth(end.getMonth() + 1);
-      end.setDate(0);
-      end.setHours(23, 59, 59, 999);
-      label = "Last month";
-      break;
-    }
-    default:
-      start.setHours(0, 0, 0, 0);
-      end.setTime(now.getTime());
-  }
-
-  return {
-    startMs: start.getTime(),
-    endMs: end.getTime(),
-    label,
-  };
-}
-
-// =============================================================================
 // Chart Series Configurations
 // =============================================================================
-/**
- * Get base chart series configurations (shared between desktop and mobile).
- */
-function getBaseChartSeries() {
-  return [
-    {}, // x-axis placeholder
-    {
-      label: "Power",
-      stroke: ChartColors.power,
-      fill: ChartColors.powerFill,
-      width: 1,
-      scale: "y",
-    },
-    {
-      label: "Daily Usage",
-      stroke: ChartColors.dailyEnergy,
-      width: 2,
-      scale: "y3",
-    },
-    {
-      label: "30d Avg",
-      stroke: ChartColors.typicalDaily,
-      width: 2,
-      scale: "y3",
-    },
-    {
-      label: "Energy",
-      stroke: ChartColors.energy,
-      width: 1,
-      scale: "y2",
-    },
-  ];
-}
-
 /**
  * Get base chart axes configurations.
  * @param {Object} opts - Options for axis sizing
@@ -619,20 +510,16 @@ function processReadingsData(rows) {
 
 // Export to window for use by other scripts
 window.EnergyMonitor = {
-  ChartColors,
   readChartTheme,
-  getCssVar,
   Fmt,
   formatDuration,
   fetchJson,
   setConnectionStatus,
   startLivePower,
+  getDateKey,
   alignDailyDataToTimestamps,
   loadCostPerKwh,
   saveCostPerKwh,
-  getPresetPeriod,
-  PRESET_IDS,
-  getBaseChartSeries,
   getBaseChartAxes,
   getDesktopChartAxes,
   getDesktopChartSeries,

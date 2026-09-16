@@ -1,8 +1,13 @@
 (() => {
   const {
+    Fmt,
+    formatDuration,
     fetchJson,
     setConnectionStatus,
     startLivePower,
+    alignDailyDataToTimestamps,
+    loadCostPerKwh,
+    saveCostPerKwh,
     getDesktopChartAxes,
     getDesktopChartSeries,
     getChartSelectOptions,
@@ -96,7 +101,9 @@
   const MIN_DRAG_PX = 10;
   const LIVE_THRESHOLD_SEC = 120;
   const SECONDS_PER_DAY = 86_400;
-  const DEFAULT_CHART_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+  const HOUR_MS = 60 * 60 * 1000;
+  const DAY_MS = 24 * HOUR_MS;
+  const DEFAULT_CHART_LOOKBACK_MS = 7 * DAY_MS;
   const WS_PER_KWH = 3_600_000;       // Watt-seconds → kWh: divide by this
   const WMS_PER_KWH = 3_600_000_000;  // Watt-milliseconds → kWh: divide by this
   const EMA_ALPHA = 0.0001;            // ≈ 2-day smoothing at 10s sample rate
@@ -149,29 +156,6 @@
     statElements.forEach(el => el.classList.remove("skeleton"));
   }
 
-  // --------------------------------------------------------------------------
-  // Formatting Helpers
-  // --------------------------------------------------------------------------
-  const dateTimeFmtOpts = {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  };
-
-  const fmt = {
-    n: (v, digits = 2) =>
-      v === null || v === undefined || Number.isNaN(v) ? "–" : Number(v).toFixed(digits),
-    t: (ms) => {
-      if (!ms) return "–";
-      const d = new Date(ms);
-      return d.toLocaleString(undefined, dateTimeFmtOpts);
-    },
-  };
-
   /**
    * The header token reports data freshness, and the live-power poller owns that — it runs
    * every few seconds against the same backend. A chart fetch only speaks up when it fails.
@@ -189,6 +173,11 @@
       width: wrapper?.clientWidth || chartEl.clientWidth || 800,
       height: wrapper?.clientHeight || 400,
     };
+  }
+
+  // Series order expected by uPlot: x, power, daily, avgPower, meterReading, typicalDaily
+  function chartData() {
+    return [xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals];
   }
 
   function initChart() {
@@ -238,19 +227,10 @@
         ],
       },
     };
-    // Data order: x, power, daily, avgPower, meterReading, typicalDaily
-    u = new uPlot(opts, [xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals], chartEl);
-    
-    // Set initial series visibility based on tracked state
-    if (u && u.series) {
-      Object.keys(seriesVisibility).forEach(seriesIdx => {
-        const idx = parseInt(seriesIdx);
-        if (u.series[idx]) {
-          u.setSeries(idx, { show: seriesVisibility[idx] });
-        }
-      });
-    }
-    
+    u = new uPlot(opts, chartData(), chartEl);
+
+    applySeriesVisibility();
+
     if (u && u.over) {
       const over = u.over;
       over.addEventListener("pointerdown", handlePointerSelectStart);
@@ -276,12 +256,19 @@
     }, { passive: false });
   }
 
+  function applySeriesVisibility() {
+    if (!u || !u.series) return;
+    Object.keys(seriesVisibility).forEach(seriesIdx => {
+      const idx = parseInt(seriesIdx);
+      if (u.series[idx]) {
+        u.setSeries(idx, { show: seriesVisibility[idx] });
+      }
+    });
+  }
+
   function renderSelection() {
     if (selection.start && selection.end) {
-      const delta = selection.end - selection.start;
-      const line3 = `${formatDuration(delta)}`;
-      statRange.innerHTML = `${line3}`;
-
+      statRange.textContent = formatDuration(selection.end - selection.start);
     } else {
       statRange.textContent = "";
     }
@@ -301,7 +288,7 @@
     clearPointerSelectionOverlay();
 
     if (u) {
-      u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
+      u.setData(chartData());
       u.setScale("x", { min: startMs / 1000, max: endMs / 1000 });
     }
     renderSelection();
@@ -321,107 +308,41 @@
   }
 
   /**
-   * Calculate Exponential Moving Average (EMA) of power values.
-   * EMA gives more weight to recent values while smoothing out noise.
-   * The smoothing factor is chosen to approximate a 2-day response time.
+   * Exponential moving average of power; EMA_ALPHA approximates a 2-day window at
+   * the 10s sample rate. Gaps hold the last EMA value so the line stays continuous.
    */
   function calculateRollingAvg() {
     if (xVals.length === 0 || yVals.length === 0) {
       rollingAvgVals = [];
       return;
     }
-    
-    // Smoothing factor: lower = smoother (more history), higher = more responsive
-    // alpha ≈ 2/(N+1) where N is the equivalent window size
-    // With 10-second sampling: 2 days = 17,280 points
-    // For 2-day equivalent: alpha ≈ 2/(17280+1) ≈ 0.000116
-    const alpha = EMA_ALPHA;
-    
     rollingAvgVals = new Array(xVals.length).fill(null);
-    
-    // Initialize with first valid value
     let ema = null;
     for (let i = 0; i < xVals.length; i++) {
       if (yVals[i] != null && Number.isFinite(yVals[i])) {
-        if (ema === null) {
-          // Initialize EMA with first valid value
-          ema = yVals[i];
-        } else {
-          // EMA formula: EMA_t = alpha * value_t + (1 - alpha) * EMA_{t-1}
-          ema = alpha * yVals[i] + (1 - alpha) * ema;
-        }
+        ema = ema === null ? yVals[i] : EMA_ALPHA * yVals[i] + (1 - EMA_ALPHA) * ema;
         rollingAvgVals[i] = ema;
       } else if (ema !== null) {
-        // If current value is null but we have an EMA, keep the last EMA
         rollingAvgVals[i] = ema;
       }
     }
   }
 
-  /**
-   * Interpolate daily energy consumption values to align with xVals timestamps.
-   * Each point gets the daily kWh value for its corresponding day.
-   */
   function calculateDailyEnergyVals() {
-    if (!dailyEnergyData.length || !xVals.length) {
-      dailyEnergyVals = new Array(xVals.length).fill(null);
-      return;
-    }
-
-    // Build a map of date -> daily kWh
-    const dailyMap = new Map();
-    for (const d of dailyEnergyData) {
-      const date = new Date(d.t);
-      const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-      dailyMap.set(dateKey, d.kwh);
-    }
-
-    // Map each xVal timestamp to its day's kWh value
-    dailyEnergyVals = xVals.map(secTs => {
-      const date = new Date(secTs * 1000);
-      const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-      return dailyMap.get(dateKey) ?? null;
-    });
+    dailyEnergyVals = alignDailyDataToTimestamps(dailyEnergyData, xVals);
   }
 
   /**
-   * Calculate typical daily energy values aligned with xVals.
-   * Uses either 30-day moving average or flat total average based on avgMode.
+   * Typical daily energy aligned with xVals: the 30-day moving average per day,
+   * or a flat all-time average line, depending on avgMode.
    */
   function calculateTypicalDailyEnergyVals() {
-    if (!xVals.length) {
-      typicalDailyEnergyVals = new Array(xVals.length).fill(null);
-      return;
-    }
-
     if (avgMode === '30d') {
-      // Use 30-day moving average
-      if (!movingAvgDailyData.length) {
-        typicalDailyEnergyVals = new Array(xVals.length).fill(null);
-        return;
-      }
-
-      // Build a map of date -> moving average kWh
-      const movingAvgMap = new Map();
-      for (const d of movingAvgDailyData) {
-        const date = new Date(d.t);
-        const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-        movingAvgMap.set(dateKey, d.kwh);
-      }
-
-      // Map each xVal timestamp to its day's moving average value
-      typicalDailyEnergyVals = xVals.map(secTs => {
-        const date = new Date(secTs * 1000);
-        const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-        return movingAvgMap.get(dateKey) ?? null;
-      });
-    } else {
-      // Use flat total average
-      if (!avgDailyEnergyUsage) {
-        typicalDailyEnergyVals = new Array(xVals.length).fill(null);
-        return;
-      }
+      typicalDailyEnergyVals = alignDailyDataToTimestamps(movingAvgDailyData, xVals);
+    } else if (avgDailyEnergyUsage) {
       typicalDailyEnergyVals = new Array(xVals.length).fill(avgDailyEnergyUsage);
+    } else {
+      typicalDailyEnergyVals = new Array(xVals.length).fill(null);
     }
   }
 
@@ -457,43 +378,30 @@
     const curX = u.scales && u.scales.x ? u.scales.x : null;
     const curMin = curX && Number.isFinite(curX.min) ? curX.min : null;
     const curMax = curX && Number.isFinite(curX.max) ? curX.max : null;
-    
-    // Calculate rolling average
+
     calculateRollingAvg();
-    
-    // Calculate daily energy values aligned with chart timestamps
     calculateDailyEnergyVals();
-    
-    // Calculate typical daily energy values
     calculateTypicalDailyEnergyVals();
-    
-    u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
-    
+    u.setData(chartData());
+
     if (curMin !== null && curMax !== null && curMax > curMin && xVals.length > 0) {
       const latestDataSec = xVals[xVals.length - 1];
       const oldLatestSec = curMax;
-      
-      // If the view's right edge was near the latest data (within threshold),
-      // auto-expand to include new data - user is likely watching "live"
+      // A right edge near the latest data means the user is watching "live":
+      // slide the window forward to include new points, keeping its width.
       const isWatchingLive = (oldLatestSec >= latestDataSec - LIVE_THRESHOLD_SEC);
-      
+
       if (isWatchingLive && latestDataSec > oldLatestSec) {
-        // Expand view to include new data, keeping the same time window width
         const windowWidth = curMax - curMin;
-        const newMax = latestDataSec;
-        const newMin = newMax - windowWidth;
-        u.setScale("x", { min: newMin, max: newMax });
-        
-        // Also update selection end if it was at the edge
+        u.setScale("x", { min: latestDataSec - windowWidth, max: latestDataSec });
         if (selection.end && Math.abs(selection.end / 1000 - oldLatestSec) < LIVE_THRESHOLD_SEC) {
           selection.end = latestDataSec * 1000;
         }
       } else {
-        // Keep the exact same view
         u.setScale("x", { min: curMin, max: curMax });
       }
     }
-    
+
     if (selection.start && selection.end) {
       computeStatsLocal(selection.start, selection.end);
     }
@@ -502,7 +410,7 @@
   async function fetchReadings({ start = null, end = null, incremental = false, signal = null } = {}) {
     const qs = new URLSearchParams();
 
-    // For incremental updates, only fetch data newer than what we have
+    // Incremental updates only fetch data newer than what we already have
     if (incremental && lastDataTimestamp) {
       qs.set("start", String(lastDataTimestamp + 1));
     } else if (start) {
@@ -513,14 +421,11 @@
     try {
       const fetchOpts = signal ? { signal } : {};
       const rows = await fetchJson(`/api/readings?${qs.toString()}`, fetchOpts);
-      
-      // No new data
       if (!rows.length) return;
-      
-      // Map primary series from power if present
+
       let mapped = rows.map((r) => [r.t, r.p]);
-      
-      // If all power values are null/undefined, derive power from cumulative energy deltas
+
+      // If all power values are missing, derive power from cumulative energy deltas
       if (mapped.length && mapped.every((pt) => pt[1] === null || pt[1] === undefined)) {
         const derived = [];
         for (let i = 1; i < rows.length; i++) {
@@ -545,53 +450,45 @@
       const newXVals = [];
       const newYVals = [];
       const newEVals = [];
-      
       for (let i = 0; i < mapped.length; i++) {
         const energyVal = rows[i].e;
-        if (mapped[i][1] != null && Number.isFinite(mapped[i][1]) && 
+        if (mapped[i][1] != null && Number.isFinite(mapped[i][1]) &&
             energyVal != null && Number.isFinite(energyVal) && energyVal > 0) {
           newXVals.push(Math.floor(mapped[i][0] / 1000));
           newYVals.push(mapped[i][1]);
           newEVals.push(energyVal);
         }
       }
-      
+
       if (incremental && xVals.length > 0) {
-        // Append only new data points (avoid duplicates)
+        // Append only points newer than what we already have
         const lastExistingTime = xVals[xVals.length - 1];
-        let appendIndex = 0;
+        let appendIndex = newXVals.length;
         for (let i = 0; i < newXVals.length; i++) {
           if (newXVals[i] > lastExistingTime) {
             appendIndex = i;
             break;
           }
-          appendIndex = newXVals.length; // No new points
         }
-        
         if (appendIndex < newXVals.length) {
-          // Append new data
           xVals = xVals.concat(newXVals.slice(appendIndex));
           yVals = yVals.concat(newYVals.slice(appendIndex));
           eVals = eVals.concat(newEVals.slice(appendIndex));
           trimToChartWindow();
         }
       } else {
-        // Full replacement (initial load or explicit refresh)
-        // No downsampling - use all data points
         xVals = newXVals;
         yVals = newYVals;
         eVals = newEVals;
       }
-      
-      // Update last timestamp
+
       if (xVals.length > 0) {
         lastDataTimestamp = xVals[xVals.length - 1] * 1000;
       }
-      
+
       updateChart();
 
-      // Update period summaries only on incremental updates (polling)
-      // Initial load will call it once in the initialization .then() block
+      // Initial load calls updatePeriodSummaries once from the init block instead
       if (incremental) {
         updatePeriodSummaries();
       }
@@ -647,24 +544,24 @@
       }
       energyUsed = sumWs / WS_PER_KWH;
     }
-    statEnergy.textContent = fmt.n(energyUsed, 2);
+    statEnergy.textContent = Fmt.n(energyUsed, 2);
     if (statCostRange) {
       const cost = energyUsed != null ? energyUsed * costPerKwh : null;
-      statCostRange.textContent = fmt.n(cost, 2);
+      statCostRange.textContent = Fmt.n(cost, 2);
     }
-    statAvg.textContent = fmt.n(avgP, 1);
-    statMax.textContent = fmt.n(maxP, 0);
-    statMin.textContent = fmt.n(minP, 0);
+    statAvg.textContent = Fmt.n(avgP, 1);
+    statMax.textContent = Fmt.n(maxP, 0);
+    statMin.textContent = Fmt.n(minP, 0);
     statCount.textContent = String(count);
     
     // Calculate average energy consumption based on historical average
     if (statAvgEnergy && avgDailyEnergyUsage) {
       const durationDays = (endSec - startSec) / SECONDS_PER_DAY;
       const avgEnergy = avgDailyEnergyUsage * durationDays;
-      statAvgEnergy.textContent = fmt.n(avgEnergy, 2);
+      statAvgEnergy.textContent = Fmt.n(avgEnergy, 2);
       if (statAvgCost) {
         const avgCost = avgEnergy * costPerKwh;
-        statAvgCost.textContent = fmt.n(avgCost, 2);
+        statAvgCost.textContent = Fmt.n(avgCost, 2);
       }
     } else {
       if (statAvgEnergy) statAvgEnergy.textContent = "–";
@@ -684,39 +581,25 @@
     }
 
     const tMs = xVals[idx] * 1000;
-    hoverTime.textContent = fmt.t(tMs);
-    hoverTotalEnergy.textContent = fmt.n(eVals[idx], 2);
-    hoverPower.textContent = fmt.n(yVals[idx], 0);
+    hoverTime.textContent = Fmt.t(tMs);
+    hoverTotalEnergy.textContent = Fmt.n(eVals[idx], 2);
+    hoverPower.textContent = Fmt.n(yVals[idx], 0);
 
     if (hoverDailyEnergy) {
       const dailyKwh = dailyEnergyVals[idx];
-      hoverDailyEnergy.textContent = dailyKwh != null ? fmt.n(dailyKwh, 2) : "–";
+      hoverDailyEnergy.textContent = dailyKwh != null ? Fmt.n(dailyKwh, 2) : "–";
     }
 
     if (hoverRollingAvg) {
-      hoverRollingAvg.textContent = fmt.n(rollingAvgVals[idx], 0);
+      hoverRollingAvg.textContent = Fmt.n(rollingAvgVals[idx], 0);
     }
 
     if (hoverTypicalDailyEnergy) {
       const typicalDailyKwh = typicalDailyEnergyVals[idx];
-      hoverTypicalDailyEnergy.textContent = typicalDailyKwh != null ? fmt.n(typicalDailyKwh, 2) : "–";
+      hoverTypicalDailyEnergy.textContent = typicalDailyKwh != null ? Fmt.n(typicalDailyKwh, 2) : "–";
     }
   }
 
-  function formatDuration(ms) {
-    if (ms <= 0 || !Number.isFinite(ms)) return "0s";
-    const s = Math.floor(ms / 1000);
-    const days = Math.floor(s / SECONDS_PER_DAY);
-    const hours = Math.floor((s % SECONDS_PER_DAY) / 3600);
-    const mins = Math.floor((s % 3600) / 60);
-    const secs = s % 60;
-    const parts = [];
-    if (days) parts.push(`${days}d`);
-    if (hours) parts.push(`${hours}h`);
-    if (mins) parts.push(`${mins}m`);
-    if (secs || parts.length === 0) parts.push(`${secs}s`);
-    return parts.join(" ");
-  }
   function selectRelativeRange(durationMs) {
     if (!xVals.length) return;
     const endMs = xVals[xVals.length - 1] * 1000;
@@ -876,40 +759,29 @@
   btnReset.addEventListener("click", () => {
     if (u && xVals.length) {
       u.setScale("x", { min: xVals[0], max: xVals[xVals.length - 1] });
-      u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
+      u.setData(chartData());
     }
-    setTimeRange(null); // Clear active state on reset
+    setTimeRange(null);
     clearSelection();
   });
   
   const btnToggleScale = document.getElementById("btn-toggle-scale");
   if (btnToggleScale) {
     btnToggleScale.addEventListener("click", () => {
-      // Toggle between auto and fixed scale
       powerScaleMode = powerScaleMode === 'auto' ? 'fixed' : 'auto';
-      
-      // Update button text
       btnToggleScale.textContent = powerScaleMode === 'auto' ? 'Auto' : 'Fixed';
-      
-      // Recreate chart with new scale mode
+
+      // The Y scale is fixed in the uPlot options, so recreate the chart
       if (u) {
         u.destroy();
         u = null;
       }
       initChart();
       if (u && xVals.length > 0) {
-        u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
-        // Restore current view if there's a selection
+        u.setData(chartData());
         if (selection.start && selection.end) {
           u.setScale("x", { min: selection.start / 1000, max: selection.end / 1000 });
         }
-        // Restore series visibility
-        Object.keys(seriesVisibility).forEach(seriesIdx => {
-          const idx = parseInt(seriesIdx);
-          if (u && u.series && u.series[idx]) {
-            u.setSeries(idx, { show: seriesVisibility[idx] });
-          }
-        });
       }
     });
   }
@@ -917,27 +789,17 @@
   const btnToggleAvgMode = document.getElementById("btn-toggle-avg-mode");
   if (btnToggleAvgMode) {
     btnToggleAvgMode.addEventListener("click", () => {
-      // Toggle between 30d moving average and total average
       avgMode = avgMode === '30d' ? 'total' : '30d';
-      
-      // Update button text
       btnToggleAvgMode.textContent = avgMode === '30d' ? '30d' : 'Total';
-      
-      // Update hover label
       if (hoverTypicalLabel) {
         hoverTypicalLabel.textContent = avgMode === '30d' ? '30d Avg Daily Usage (kWh):' : 'Total Avg Daily Usage (kWh):';
       }
-      
-      // Update series label
       if (u && u.series && u.series[5]) {
         u.series[5].label = avgMode === '30d' ? "30d Avg Daily Usage" : "Total Avg Daily Usage";
       }
-      
-      // Recalculate and update the chart
       calculateTypicalDailyEnergyVals();
       if (u && xVals.length > 0) {
-        u.setData([xVals, yVals, dailyEnergyVals, rollingAvgVals, eVals, typicalDailyEnergyVals]);
-        // Preserve current view
+        u.setData(chartData());
         if (selection.start && selection.end) {
           u.setScale("x", { min: selection.start / 1000, max: selection.end / 1000 });
         }
@@ -945,29 +807,15 @@
     });
   }
 
-  // Trace toggle button handlers
-  function setupTraceToggle(btn, seriesIdx, additionalSeriesIdx = null) {
+  function setupTraceToggle(btn, seriesIdx) {
     if (!btn) return;
     btn.addEventListener("click", () => {
       if (!u) return;
-      const isVisible = seriesVisibility[seriesIdx] !== false;
-      const newVisibility = !isVisible;
+      const newVisibility = seriesVisibility[seriesIdx] === false;
       seriesVisibility[seriesIdx] = newVisibility;
-      
-      // Update uPlot series visibility
       if (u.series && u.series[seriesIdx]) {
         u.setSeries(seriesIdx, { show: newVisibility });
       }
-      
-      // If there's an additional series (e.g., typical daily), toggle it too
-      if (additionalSeriesIdx !== null) {
-        seriesVisibility[additionalSeriesIdx] = newVisibility;
-        if (u.series && u.series[additionalSeriesIdx]) {
-          u.setSeries(additionalSeriesIdx, { show: newVisibility });
-        }
-      }
-      
-      // Update button appearance and accessible state
       btn.classList.toggle("inactive", !newVisibility);
       btn.setAttribute("aria-pressed", String(newVisibility));
     });
@@ -996,49 +844,23 @@
       }
     });
   }
+  // Ranges within the loaded window just re-select; longer ones refetch with a wider lookback.
+  const RELATIVE_RANGES_MS = { hour: HOUR_MS, day: DAY_MS };
+  const LOOKBACK_RANGES_MS = { week: 7 * DAY_MS, month: 30 * DAY_MS, year: 365 * DAY_MS };
+
   if (timeRangeSelect) {
     timeRangeSelect.addEventListener("change", async () => {
-      const now = new Date();
-      const nowMs = now.getTime();
-      switch (timeRangeSelect.value) {
-        case "hour":
-          selectRelativeRange(60 * 60 * 1000);
-          break;
-        case "day":
-          selectRelativeRange(24 * 60 * 60 * 1000);
-          break;
-        case "week": {
-          chartLookbackMs = 7 * 24 * 60 * 60 * 1000;
-          showLoading();
-          try {
-            await loadChartWindow();
-            applySelectionRange(getChartWindowStartMs(), nowMs, false);
-          } finally {
-            hideLoading();
-          }
-          break;
-        }
-        case "month": {
-          chartLookbackMs = 30 * 24 * 60 * 60 * 1000;
-          showLoading();
-          try {
-            await loadChartWindow();
-            applySelectionRange(getChartWindowStartMs(), nowMs, false);
-          } finally {
-            hideLoading();
-          }
-          break;
-        }
-        case "year": {
-          chartLookbackMs = 365 * 24 * 60 * 60 * 1000;
-          showLoading();
-          try {
-            await loadChartWindow();
-            applySelectionRange(getChartWindowStartMs(), nowMs, false);
-          } finally {
-            hideLoading();
-          }
-          break;
+      const value = timeRangeSelect.value;
+      if (RELATIVE_RANGES_MS[value]) {
+        selectRelativeRange(RELATIVE_RANGES_MS[value]);
+      } else if (LOOKBACK_RANGES_MS[value]) {
+        chartLookbackMs = LOOKBACK_RANGES_MS[value];
+        showLoading();
+        try {
+          await loadChartWindow();
+          applySelectionRange(getChartWindowStartMs(), Date.now(), false);
+        } finally {
+          hideLoading();
         }
       }
     });
@@ -1077,58 +899,46 @@
     fetchReadings({ start: initialStartMs, end: initialEndMs }),
     fetchEnergySummary({ start: initialStartMs, end: initialEndMs }),
   ])
-    .then((results) => {
-      // Log any failures for debugging
-      const [readingsResult, summaryResult] = results;
+    .then(([readingsResult, summaryResult]) => {
       if (readingsResult.status === "rejected") {
         console.error("fetchReadings failed:", readingsResult.reason);
       }
       if (summaryResult.status === "rejected") {
         console.error("fetchEnergySummary failed:", summaryResult.reason);
       }
-      
+
       hideLoading();
-      loadCostFromStorage();
-      
-      // Default to the loaded chart window
+      initCostInput();
+
       if (xVals.length > 0) {
         applySelectionRange(initialStartMs, initialEndMs, false);
       }
-      
-      // Always call updatePeriodSummaries - it will populate "Real" values
-      // even if fetchEnergySummary failed (avgDailyEnergyUsage would be null)
+
+      // Still populates the "Real" stats even if fetchEnergySummary failed
       updatePeriodSummaries();
-      
       poll();
     });
 
-  function loadCostFromStorage() {
-  const input = document.getElementById("cost-input");
-  let v = localStorage.getItem("cost_per_kwh");
-  if (v != null) {
-    costPerKwh = parseFloat(v) || costPerKwh;
-    if (input) input.value = String(costPerKwh);
-  } else if (input) {
-    costPerKwh = parseFloat(input.value) || costPerKwh;
-  }
-  if (input) {
+  function initCostInput() {
+    costPerKwh = loadCostPerKwh();
+    const input = document.getElementById("cost-input");
+    if (!input) return;
+    input.value = String(costPerKwh);
     input.addEventListener("change", () => {
-      const nv = parseFloat(input.value);
-      if (!Number.isNaN(nv) && nv >= 0) {
-        costPerKwh = nv;
-        localStorage.setItem("cost_per_kwh", String(costPerKwh));
+      const value = parseFloat(input.value);
+      if (!Number.isNaN(value) && value >= 0) {
+        costPerKwh = value;
+        saveCostPerKwh(value);
         updatePeriodSummaries();
       }
     });
   }
-  }
 
   async function updatePeriodSummaries() {
-    const now = new Date();
-    const nowMs = now.getTime();
-    const last30DaysMs = nowMs - (30 * 24 * 60 * 60 * 1000);
-    const last7DaysMs = nowMs - (7 * 24 * 60 * 60 * 1000);
-    const last1DayMs = nowMs - (24 * 60 * 60 * 1000);
+    const nowMs = Date.now();
+    const last30DaysMs = nowMs - 30 * DAY_MS;
+    const last7DaysMs = nowMs - 7 * DAY_MS;
+    const last1DayMs = nowMs - DAY_MS;
 
     // Use allSettled to log individual failures and still populate successful stats
     const results = await Promise.allSettled([
@@ -1141,14 +951,12 @@
     const [monthResult, weekResult, dayResult, latestResult] = results;
     const apiNames = ["30-day stats", "7-day stats", "1-day stats", "latest reading"];
 
-    // Log any failures with context
     results.forEach((result, idx) => {
       if (result.status === "rejected") {
         console.error(`[updatePeriodSummaries] ${apiNames[idx]} failed:`, result.reason);
       }
     });
 
-    // Extract values (null if failed)
     const monthStats = monthResult.status === "fulfilled" ? monthResult.value : null;
     const weekStats = weekResult.status === "fulfilled" ? weekResult.value : null;
     const dayStats = dayResult.status === "fulfilled" ? dayResult.value : null;
@@ -1156,20 +964,20 @@
 
     // Populate "Real" values from successful API calls
     if (monthStats) {
-      if (statMonthEnergy) statMonthEnergy.textContent = fmt.n(monthStats.energy_used_kwh, 2);
-      if (statMonthCost) statMonthCost.textContent = fmt.n((monthStats.energy_used_kwh || 0) * costPerKwh, 2);
+      if (statMonthEnergy) statMonthEnergy.textContent = Fmt.n(monthStats.energy_used_kwh, 2);
+      if (statMonthCost) statMonthCost.textContent = Fmt.n((monthStats.energy_used_kwh || 0) * costPerKwh, 2);
     }
     if (weekStats) {
-      if (statWeekEnergy) statWeekEnergy.textContent = fmt.n(weekStats.energy_used_kwh, 2);
-      if (statWeekCost) statWeekCost.textContent = fmt.n((weekStats.energy_used_kwh || 0) * costPerKwh, 2);
+      if (statWeekEnergy) statWeekEnergy.textContent = Fmt.n(weekStats.energy_used_kwh, 2);
+      if (statWeekCost) statWeekCost.textContent = Fmt.n((weekStats.energy_used_kwh || 0) * costPerKwh, 2);
     }
     if (dayStats) {
-      if (statDayEnergy) statDayEnergy.textContent = fmt.n(dayStats.energy_used_kwh, 2);
-      if (statDayCost) statDayCost.textContent = fmt.n((dayStats.energy_used_kwh || 0) * costPerKwh, 2);
+      if (statDayEnergy) statDayEnergy.textContent = Fmt.n(dayStats.energy_used_kwh, 2);
+      if (statDayCost) statDayCost.textContent = Fmt.n((dayStats.energy_used_kwh || 0) * costPerKwh, 2);
     }
     if (latestReading) {
-      if (statCurrentConsumption) statCurrentConsumption.textContent = fmt.n(latestReading.energy_in_kwh, 2);
-      if (statTotalCost) statTotalCost.textContent = fmt.n((latestReading.energy_in_kwh || 0) * costPerKwh, 2);
+      if (statCurrentConsumption) statCurrentConsumption.textContent = Fmt.n(latestReading.energy_in_kwh, 2);
+      if (statTotalCost) statTotalCost.textContent = Fmt.n((latestReading.energy_in_kwh || 0) * costPerKwh, 2);
     }
 
     // Populate "Typical" values (depends on avgDailyEnergyUsage from fetchEnergySummary)
@@ -1178,12 +986,12 @@
       const avg7Days = avgDailyEnergyUsage * 7;
       const avg1Day = avgDailyEnergyUsage;
 
-      if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = fmt.n(avg30Days, 2);
-      if (statMonthAvgCost) statMonthAvgCost.textContent = fmt.n(avg30Days * costPerKwh, 2);
-      if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = fmt.n(avg7Days, 2);
-      if (statWeekAvgCost) statWeekAvgCost.textContent = fmt.n(avg7Days * costPerKwh, 2);
-      if (statDayAvgEnergy) statDayAvgEnergy.textContent = fmt.n(avg1Day, 2);
-      if (statDayAvgCost) statDayAvgCost.textContent = fmt.n(avg1Day * costPerKwh, 2);
+      if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = Fmt.n(avg30Days, 2);
+      if (statMonthAvgCost) statMonthAvgCost.textContent = Fmt.n(avg30Days * costPerKwh, 2);
+      if (statWeekAvgEnergy) statWeekAvgEnergy.textContent = Fmt.n(avg7Days, 2);
+      if (statWeekAvgCost) statWeekAvgCost.textContent = Fmt.n(avg7Days * costPerKwh, 2);
+      if (statDayAvgEnergy) statDayAvgEnergy.textContent = Fmt.n(avg1Day, 2);
+      if (statDayAvgCost) statDayAvgCost.textContent = Fmt.n(avg1Day * costPerKwh, 2);
     } else {
       if (statMonthAvgEnergy) statMonthAvgEnergy.textContent = "–";
       if (statMonthAvgCost) statMonthAvgCost.textContent = "–";

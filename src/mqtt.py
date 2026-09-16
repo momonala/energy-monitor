@@ -22,7 +22,6 @@ from src.observability import metrics
 
 logger = get_logger(__name__)
 
-# Queue for database writes
 db_queue = queue.Queue()
 
 _last_sensor_time: float | None = None
@@ -69,10 +68,9 @@ def handle_lwt_status(payload: str) -> None:
 def db_worker():
     """Single thread consuming DB writes."""
     while True:
-        item = db_queue.get()
-        if item is None:  # sentinel to stop
+        payload = db_queue.get()
+        if payload is None:  # sentinel to stop
             break
-        payload, _ = item
         try:
             save_energy_reading(tasmota_payload=payload)
         except Exception:
@@ -96,7 +94,7 @@ def on_message(client, userdata, msg):
     global _last_sensor_time
     try:
         payload = msg.payload.decode()
-        # handle basic status messages
+        # LWT is a plain-text status ("Online"/"Offline"), not JSON
         if msg.topic == LWT_TOPIC:
             metrics.increment("mqtt.messages.status")
             handle_lwt_status(payload)
@@ -121,7 +119,7 @@ def on_message(client, userdata, msg):
         logger.debug("[mqtt] received SENSOR: %s", summary)
         metrics.increment("mqtt.messages.mqtt_reading")
         metrics.gauge("mqtt.db_queue.depth", db_queue.qsize())
-        db_queue.put((data, time.perf_counter()))
+        db_queue.put(data)
     elif msg.topic == STATE_TOPIC:
         logger.debug("[msg] %s: %s", msg.topic, data)
     elif msg.topic == INFO3_TOPIC:
@@ -144,12 +142,10 @@ if __name__ == "__main__":
         logger.info("Using macOS, skipping MQTT loop")
         sys.exit(0)
 
-    # Start DB worker thread
     worker_thread = threading.Thread(target=db_worker, daemon=True)
     worker_thread.start()
     logger.info("Started DB worker thread")
 
-    # Create and configure MQTT client with callback API version 2
     client = mqtt.Client(
         protocol=mqtt.MQTTv5,
         userdata=None,
@@ -164,7 +160,6 @@ if __name__ == "__main__":
     client.connect(SERVER_URL, MQTT_PORT, keepalive=60)
     logger.info("MQTT client connected, starting message loop")
 
-    # Use loop_forever() to keep the process alive
     try:
         client.loop_forever()
     except KeyboardInterrupt:

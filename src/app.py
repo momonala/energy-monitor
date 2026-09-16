@@ -42,7 +42,6 @@ from src.observability import metrics
 
 logger = get_logger(__name__)
 
-# Point to static and templates folders at project root (one level up from src/)
 project_root = Path(__file__).parent.parent
 app = Flask(
     __name__,
@@ -96,16 +95,12 @@ def inject_nav_context():
 @app.before_request
 def _spyglass_request_start():
     """Record request start time for API latency metrics."""
-    from flask import request
-
     request.environ["_spyglass_start"] = time.perf_counter()
 
 
 @app.after_request
 def _spyglass_request_end(response):
-    """Emit per-endpoint request and error counters."""
-    from flask import request
-
+    """Emit per-endpoint request latency."""
     endpoint = request.endpoint or "unknown"
     elapsed_ms = (time.perf_counter() - request.environ.get("_spyglass_start", time.perf_counter())) * 1000
     metrics.timing(f"api.{endpoint}.latency_ms", elapsed_ms)
@@ -120,7 +115,6 @@ MOVING_AVG_WINDOW_DAYS = 30
 def is_mobile_user_agent() -> bool:
     """Check if the request is from a mobile device (excluding iPad)."""
     user_agent = request.headers.get("User-Agent", "")
-    # Explicitly exclude iPad
     if "iPad" in user_agent:
         return False
     return any(pattern in user_agent for pattern in MOBILE_PATTERNS)
@@ -280,7 +274,7 @@ def main():
     logger.info(f"Starting Flask server on http://0.0.0.0:{FLASK_PORT}")
     logger.info(f"Status: {json.dumps(status(), indent=2)}")
     scheduler.start()
-    logger.info("Started APScheduler: hourly DB health check")
+    logger.info("Started APScheduler: hourly DB health check, per-minute ingestion watch")
     app.run(host="0.0.0.0", port=FLASK_PORT, debug=False)
 
 

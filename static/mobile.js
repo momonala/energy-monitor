@@ -4,11 +4,10 @@
  * Uses shared utilities from shared.js
  */
 (() => {
-  // Import shared utilities
-  const { Fmt, formatDuration, fetchJson, setConnectionStatus, startLivePower, alignDailyDataToTimestamps,
-          loadCostPerKwh, getBaseChartAxes, processReadingsData, readChartTheme } = window.EnergyMonitor;
+  const { Fmt, formatDuration, fetchJson, setConnectionStatus, startLivePower, getDateKey,
+          alignDailyDataToTimestamps, loadCostPerKwh, getBaseChartAxes, processReadingsData,
+          readChartTheme } = window.EnergyMonitor;
 
-  // DOM Elements
   const chartEl = document.getElementById("chart");
   const chartLoading = document.getElementById("chart-loading");
   const statusConn = document.getElementById("status-connection");
@@ -73,7 +72,6 @@
       return;
     }
 
-    // Destroy existing chart
     if (u) {
       u.destroy();
       u = null;
@@ -131,8 +129,6 @@
     };
 
     u = new uPlot(opts, [xVals, yVals, eVals, dailyEnergyVals, typicalDailyVals], chartEl);
-
-    // Apply initial visibility
     applySeriesVisibility();
   }
 
@@ -163,16 +159,12 @@
    * Toggle a series visibility and update the chart.
    */
   function toggleSeries(seriesIdx, button) {
-    seriesVisibility[seriesIdx] = !seriesVisibility[seriesIdx];
-    
-    // Update button state
-    const isVisible = seriesVisibility[seriesIdx];
+    const isVisible = !seriesVisibility[seriesIdx];
+    seriesVisibility[seriesIdx] = isVisible;
     button.classList.toggle("active", isVisible);
     button.setAttribute("aria-pressed", String(isVisible));
-    
-    // Update chart
     if (u && u.series && u.series[seriesIdx]) {
-      u.setSeries(seriesIdx, { show: seriesVisibility[seriesIdx] });
+      u.setSeries(seriesIdx, { show: isVisible });
     }
   }
 
@@ -318,13 +310,7 @@
       return;
     }
 
-    // Use shared processing utility
-    const processed = processReadingsData(rows);
-    xVals = processed.xVals;
-    yVals = processed.yVals;
-    eVals = processed.eVals;
-
-    // Use shared alignment utility
+    ({ xVals, yVals, eVals } = processReadingsData(rows));
     dailyEnergyVals = alignDailyDataToTimestamps(dailyEnergyData, xVals);
     typicalDailyVals = alignDailyDataToTimestamps(movingAvgData, xVals);
 
@@ -349,7 +335,6 @@
     statEnergy.textContent = Fmt.n(energy, 2);
     statCost.textContent = Fmt.n(energy != null ? energy * costPerKwh : null, 2);
 
-    // Calculate typical usage based on duration and avg daily usage
     const durationDays = (endMs - startMs) / (24 * 60 * 60 * 1000);
     const typicalEnergy = avgDailyEnergyUsage != null ? avgDailyEnergyUsage * durationDays : null;
     statTypicalEnergy.textContent = Fmt.n(typicalEnergy, 2);
@@ -368,30 +353,19 @@
   function updateDailyTable(startMs, endMs) {
     if (!dailyTableBody) return;
 
-    // Filter daily data to the selected period
-    const filteredDaily = dailyEnergyData.filter(d => d.t >= startMs && d.t <= endMs);
+    const filteredDaily = dailyEnergyData
+      .filter(d => d.t >= startMs && d.t <= endMs)
+      .sort((a, b) => b.t - a.t);
 
-    // Sort by date descending (most recent first)
-    filteredDaily.sort((a, b) => b.t - a.t);
+    const avgMap = new Map(movingAvgData.map(d => [getDateKey(new Date(d.t)), d.kwh]));
 
-    // Build a map of 30d moving averages by date
-    const avgMap = new Map();
-    for (const d of movingAvgData) {
-      const date = new Date(d.t);
-      const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-      avgMap.set(dateKey, d.kwh);
-    }
-
-    // Get 30d moving average of the latest day for comparison
+    // Baseline for the diff column: the 30d moving average of the most recent day shown
     let baseline = avgDailyEnergyUsage;
     if (filteredDaily.length > 0) {
-      const latestDate = new Date(filteredDaily[0].t);
-      const latestKey = `${latestDate.getFullYear()}-${latestDate.getMonth()}-${latestDate.getDate()}`;
-      baseline = avgMap.get(latestKey) ?? avgDailyEnergyUsage;
+      baseline = avgMap.get(getDateKey(new Date(filteredDaily[0].t))) ?? avgDailyEnergyUsage;
     }
     const baselineCost = baseline != null ? baseline * costPerKwh : null;
 
-    // Update title with 30d average
     if (dailyTableTitle) {
       if (baseline != null) {
         dailyTableTitle.textContent = `Daily Breakdown (30d avg: ${Fmt.n(baseline, 1)} kWh, €${Fmt.n(baselineCost, 2)})`;

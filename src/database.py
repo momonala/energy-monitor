@@ -39,23 +39,21 @@ class NegativeEnergyError(ValueError):
     """Raised when cumulative energy difference is negative (meter reset or bad data)."""
 
 
-# Time constants for data queries
 DEFAULT_LOOKBACK_WEEKS = 52
 YEARLY_AVG_DAYS = 365
 
 # Readings arrive roughly every 10s; a minute without one means the feed is broken, not slow.
 LIVE_POWER_STALE_SECONDS = 60
 
-# Configure engine with timeout and connection pool settings for better concurrency
 engine = create_engine(
     DATABASE_URL,
     future=True,
     connect_args={
-        "timeout": 20.0,  # Wait up to 20 seconds for lock to be released
-        "check_same_thread": False,  # Allow multi-threaded access
+        "timeout": 20.0,  # seconds to wait for a locked database
+        "check_same_thread": False,
     },
-    pool_pre_ping=True,  # Verify connections before using
-    pool_recycle=3600,  # Recycle connections after 1 hour
+    pool_pre_ping=True,
+    pool_recycle=3600,
 )
 
 
@@ -64,8 +62,8 @@ def set_sqlite_pragma(dbapi_conn, connection_record):
     """Enable WAL mode for better concurrency."""
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA synchronous=NORMAL")  # Faster than FULL, still safe
-    cursor.execute("PRAGMA busy_timeout=20000")  # 20 second timeout
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA busy_timeout=20000")
     cursor.close()
 
 
@@ -78,7 +76,7 @@ class EnergyReading(Base):
 
     timestamp = Column(
         DateTime,
-        default=datetime.now(local_timezone()),
+        default=lambda: datetime.now(local_timezone()),
         nullable=False,
         index=True,
         primary_key=True,
@@ -93,22 +91,15 @@ class EnergyReading(Base):
     raw_payload = Column(Text, nullable=False)
 
     def __repr__(self):
-        return f"EnergyReading(\
-        timestamp={self.timestamp}, \
-        meter_id={self.meter_id}, \
-        power_watts={self.power_watts}, \
-        energy_in_kwh={self.energy_in_kwh}, \
-        energy_out_kwh={self.energy_out_kwh}, \
-        power_phase_1_watts={self.power_phase_1_watts}, \
-        power_phase_2_watts={self.power_phase_2_watts}, \
-        power_phase_3_watts={self.power_phase_3_watts}, \
-        raw_payload={self.raw_payload})"
+        return (
+            f"EnergyReading(timestamp={self.timestamp}, meter_id={self.meter_id}, "
+            f"power_watts={self.power_watts}, energy_in_kwh={self.energy_in_kwh}, "
+            f"energy_out_kwh={self.energy_out_kwh})"
+        )
 
 
 def init_db():
     """Create all tables if they do not exist and enable WAL mode."""
-    # Ensure WAL mode is enabled (the event listener handles this for new connections,
-    # but we also set it explicitly here for existing databases)
     with engine.connect() as conn:
         conn.execute(text("PRAGMA journal_mode=WAL"))
         conn.execute(text("PRAGMA synchronous=NORMAL"))
@@ -201,21 +192,21 @@ def save_energy_reading(tasmota_payload: dict):
             reading.energy_out_kwh,
             timestamp.isoformat(),
         )
-        return
     except sqlalchemy.exc.IntegrityError:
         metrics.increment("db.readings.duplicate")
         logger.warning(f"Reading already exists for {timestamp=}")
-        return
 
 
-def latest_energy_reading() -> EnergyReading | None:
-    """Get the latest energy reading."""
+def latest_energy_reading() -> dict | None:
+    """Get the latest energy reading as a plain dict, or None if the DB is empty."""
     with SessionLocal() as session:
-        last_reading = session.query(EnergyReading).order_by(EnergyReading.timestamp.desc()).first()
-        last_reading = last_reading.__dict__
-        last_reading.pop("_sa_instance_state")
-        last_reading["timestamp"] = last_reading["timestamp"].isoformat()
-        return last_reading
+        reading = session.query(EnergyReading).order_by(EnergyReading.timestamp.desc()).first()
+        if reading is None:
+            return None
+        fields = dict(reading.__dict__)
+        fields.pop("_sa_instance_state")
+        fields["timestamp"] = fields["timestamp"].isoformat()
+        return fields
 
 
 def latest_power() -> dict:
@@ -411,17 +402,9 @@ def get_readings_cached(start_bound: datetime, end_bound: datetime) -> list[dict
             f"[get_readings] Found {len(rows)} 2-min buckets for {start_bound=} {end_bound=}: "
             f"oldest {rows[0][0]}, latest {rows[-1][0]}"
         )
-    result: list[dict] = []
-    for r in rows:
-        ts = int(r.timestamp.timestamp() * 1000)
-        result.append(
-            {
-                "t": ts,
-                "p": r.power_watts,
-                "e": r.energy_in_kwh,
-            }
-        )
-    return result
+    return [
+        {"t": int(r.timestamp.timestamp() * 1000), "p": r.power_watts, "e": r.energy_in_kwh} for r in rows
+    ]
 
 
 def get_daily_energy_usage(
@@ -471,8 +454,6 @@ def get_daily_energy_usage(
     result = []
     for row in rows:
         d_str, first_ts, last_ts, first_energy, last_energy = row
-        if first_energy is None or last_energy is None:
-            continue
         daily_kwh = float(last_energy) - float(first_energy)
         if daily_kwh < 0:
             raise NegativeEnergyError(
@@ -494,13 +475,10 @@ def get_daily_energy_usage(
         hours_covered = (last_ts - first_ts).total_seconds() / 3600
         is_partial = hours_covered < 23
 
-        # Midpoint of day in local timezone (noon)
-        date_part = first_ts.date()
-        midpoint = datetime.combine(date_part, datetime.min.time().replace(hour=12))
-        midpoint = midpoint.replace(tzinfo=tz)
-        t_ms = int(midpoint.timestamp() * 1000)
-
-        result.append({"t": t_ms, "kwh": float(daily_kwh), "is_partial": is_partial})
+        local_noon = datetime.combine(first_ts.date(), datetime.min.time().replace(hour=12), tzinfo=tz)
+        result.append(
+            {"t": int(local_noon.timestamp() * 1000), "kwh": float(daily_kwh), "is_partial": is_partial}
+        )
 
     return result
 
@@ -514,26 +492,12 @@ def get_moving_avg_daily_usage(daily_energy_data: list[dict], window_days: int =
     if not daily_energy_data:
         return []
 
-    # Sort by timestamp
     sorted_data = sorted(daily_energy_data, key=lambda x: x["t"])
-
     result = []
     for i, day in enumerate(sorted_data):
-        # Get up to window_days of history (including current day)
-        start_idx = max(0, i - window_days + 1)
-        window_data = sorted_data[start_idx : i + 1]
-
-        # Calculate average kWh for this window
-        kwh_values = [d["kwh"] for d in window_data]
-        avg_kwh = sum(kwh_values) / len(kwh_values) if kwh_values else 0.0
-
-        result.append(
-            {
-                "t": day["t"],
-                "kwh": float(avg_kwh),
-            }
-        )
-
+        window = sorted_data[max(0, i - window_days + 1) : i + 1]
+        avg_kwh = sum(d["kwh"] for d in window) / len(window)
+        result.append({"t": day["t"], "kwh": float(avg_kwh)})
     return result
 
 

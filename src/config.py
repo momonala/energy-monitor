@@ -59,7 +59,6 @@ def config_cli(
 ) -> None:
 # fmt: on
     """Get configuration values from pyproject.toml."""
-    # Show all configuration
     if all:
         typer.echo(f"project_name={_project_config['name']}")
         typer.echo(f"project_version={_project_config['version']}")
@@ -79,27 +78,27 @@ def config_cli(
         typer.echo(f"service_monitor_url={SERVICE_MONITOR_URL}")
         return
 
-    # Map parameters to their actual values
-    param_map = {
-        project_name: _project_config["name"],
-        project_version: _project_config["version"],
-        server_url: SERVER_URL,
-        flask_port: FLASK_PORT,
-        mqtt_port: MQTT_PORT,
-        mqtt_topic: TOPIC,
-        tasmota_ui_url: TASMOTA_UI_URL,
-        gateway_ip: GATEWAY_IP,
-        access_point_ip: ACCESS_POINT_IP,
-        database_path: _tool_config["database_path"],
-        database_url: DATABASE_URL,
-        tunnel_name: TUNNEL_NAME,
-        domain_suffix: DOMAIN_SUFFIX,
-        spyglass_host: SPYGLASS_HOST,
-        spyglass_dashboard_url: SPYGLASS_DASHBOARD_URL,
-        service_monitor_url: SERVICE_MONITOR_URL,
-    }
+    # (flag, value) pairs — a dict keyed by the booleans would collapse to two entries
+    flag_values = [
+        (project_name, _project_config["name"]),
+        (project_version, _project_config["version"]),
+        (server_url, SERVER_URL),
+        (flask_port, FLASK_PORT),
+        (mqtt_port, MQTT_PORT),
+        (mqtt_topic, TOPIC),
+        (tasmota_ui_url, TASMOTA_UI_URL),
+        (gateway_ip, GATEWAY_IP),
+        (access_point_ip, ACCESS_POINT_IP),
+        (database_path, _tool_config["database_path"]),
+        (database_url, DATABASE_URL),
+        (tunnel_name, TUNNEL_NAME),
+        (domain_suffix, DOMAIN_SUFFIX),
+        (spyglass_host, SPYGLASS_HOST),
+        (spyglass_dashboard_url, SPYGLASS_DASHBOARD_URL),
+        (service_monitor_url, SERVICE_MONITOR_URL),
+    ]
 
-    for is_set, value in param_map.items():
+    for is_set, value in flag_values:
         if is_set:
             typer.echo(value)
             return
