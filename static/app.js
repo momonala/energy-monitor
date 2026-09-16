@@ -11,6 +11,7 @@
     getDesktopChartAxes,
     getDesktopChartSeries,
     getChartSelectOptions,
+    processReadingsData,
   } = window.EnergyMonitor;
 
   const chartEl = document.getElementById("chart");
@@ -104,9 +105,8 @@
   const HOUR_MS = 60 * 60 * 1000;
   const DAY_MS = 24 * HOUR_MS;
   const DEFAULT_CHART_LOOKBACK_MS = 7 * DAY_MS;
-  const WS_PER_KWH = 3_600_000;       // Watt-seconds → kWh: divide by this
-  const WMS_PER_KWH = 3_600_000_000;  // Watt-milliseconds → kWh: divide by this
-  const EMA_ALPHA = 0.0001;            // ≈ 2-day smoothing at 10s sample rate
+  const WS_PER_KWH = 3_600_000;  // Watt-seconds → kWh: divide by this
+  const EMA_ALPHA = 0.0001;      // ≈ 2-day smoothing at 10s sample rate
 
   let lastDataTimestamp = null;
   let pollController = null;
@@ -423,42 +423,7 @@
       const rows = await fetchJson(`/api/readings?${qs.toString()}`, fetchOpts);
       if (!rows.length) return;
 
-      let mapped = rows.map((r) => [r.t, r.p]);
-
-      // If all power values are missing, derive power from cumulative energy deltas
-      if (mapped.length && mapped.every((pt) => pt[1] === null || pt[1] === undefined)) {
-        const derived = [];
-        for (let i = 1; i < rows.length; i++) {
-          const a = rows[i - 1];
-          const b = rows[i];
-          if (a && b && a.e != null && b.e != null &&
-              typeof a.t === "number" && typeof b.t === "number" && b.t > a.t) {
-            const dE_kWh = b.e - a.e;
-            const dt_ms = b.t - a.t;
-            if (dt_ms > 0) {
-              const watts = Math.max(0, (dE_kWh * WMS_PER_KWH) / dt_ms);
-              derived.push([b.t, watts]);
-            }
-          }
-        }
-        if (derived.length) {
-          mapped = derived;
-        }
-      }
-      
-      // Filter out invalid power and energy values
-      const newXVals = [];
-      const newYVals = [];
-      const newEVals = [];
-      for (let i = 0; i < mapped.length; i++) {
-        const energyVal = rows[i].e;
-        if (mapped[i][1] != null && Number.isFinite(mapped[i][1]) &&
-            energyVal != null && Number.isFinite(energyVal) && energyVal > 0) {
-          newXVals.push(Math.floor(mapped[i][0] / 1000));
-          newYVals.push(mapped[i][1]);
-          newEVals.push(energyVal);
-        }
-      }
+      const { xVals: newXVals, yVals: newYVals, eVals: newEVals } = processReadingsData(rows);
 
       if (incremental && xVals.length > 0) {
         // Append only points newer than what we already have
