@@ -20,9 +20,6 @@ def send_alert(message: str) -> None:
     if sys.platform == "darwin":
         return
 
-    # TEMP: energy monitor is down, muting alerts to stop hourly spam. Re-enable when fixed.
-    return
-
     body = json.dumps({"message": f"{ALERT_PREFIX}{message}"}).encode()
     request = urllib.request.Request(
         f"{SERVICE_MONITOR_URL.rstrip('/')}/api/alert",
