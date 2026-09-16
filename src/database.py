@@ -345,38 +345,58 @@ def log_db_health_check():
     logger.debug(f"{num_readings_last_hour=} {num_total_readings=} {db_size_mb=:.1f}")
 
 
+DEFAULT_READINGS_BUCKET_MS = 120_000
+RAW_READING_INTERVAL_MS = 10_000  # sensor TelePeriod; buckets at or below this are raw rows
+MAX_READINGS_BUCKET_MS = MS_PER_DAY
+
+
 def get_readings(
     start: datetime | None = None,
     end: datetime | None = None,
+    bucket_ms: int = DEFAULT_READINGS_BUCKET_MS,
 ) -> list[dict]:
     """
-    Fetch readings in 2-min buckets (max per bucket). Optionally filter by time range.
+    Fetch readings, optionally filtered by time range, downsampled in SQL to
+    bucket_ms buckets (max per bucket) so full raw rows never materialize for
+    large ranges. A bucket_ms at or below the raw ~10s cadence returns raw rows.
     Returns a list of dicts with timestamp (ms since epoch), power_watts, and energy_in_kwh.
-    Aggregation is done in SQL so we never load full raw rows for large ranges.
     """
     start_ms = _to_ms(start) if start is not None else _now_ms() - DEFAULT_LOOKBACK_WEEKS * 7 * MS_PER_DAY
     end_ms = _to_ms(end) if end is not None else _now_ms()
-    bucket = EnergyReading.timestamp_ms // 120_000
+    time_filter = (
+        EnergyReading.timestamp_ms >= start_ms,
+        EnergyReading.timestamp_ms <= end_ms,
+    )
     with metrics.timed("db.get_readings"):
         with SessionLocal() as session:
-            rows = (
-                session.query(
-                    func.max(EnergyReading.timestamp_ms).label("timestamp_ms"),
-                    func.max(EnergyReading.power_watts).label("power_watts"),
-                    func.max(EnergyReading.energy_in_kwh).label("energy_in_kwh"),
+            if bucket_ms <= RAW_READING_INTERVAL_MS:
+                rows = (
+                    session.query(
+                        EnergyReading.timestamp_ms,
+                        EnergyReading.power_watts,
+                        EnergyReading.energy_in_kwh,
+                    )
+                    .filter(*time_filter)
+                    .order_by(EnergyReading.timestamp_ms)
+                    .all()
                 )
-                .filter(
-                    EnergyReading.timestamp_ms >= start_ms,
-                    EnergyReading.timestamp_ms <= end_ms,
+            else:
+                bucket = EnergyReading.timestamp_ms // bucket_ms
+                rows = (
+                    session.query(
+                        func.max(EnergyReading.timestamp_ms).label("timestamp_ms"),
+                        func.max(EnergyReading.power_watts).label("power_watts"),
+                        func.max(EnergyReading.energy_in_kwh).label("energy_in_kwh"),
+                    )
+                    .filter(*time_filter)
+                    .group_by(bucket)
+                    .order_by(func.max(EnergyReading.timestamp_ms))
+                    .all()
                 )
-                .group_by(bucket)
-                .order_by(func.max(EnergyReading.timestamp_ms))
-                .all()
-            )
 
     if rows:
         logger.debug(
-            f"[get_readings] Found {len(rows)} 2-min buckets for {start_ms=} {end_ms=}: "
+            f"[get_readings] Found {len(rows)} rows ({bucket_ms=}) for {start_ms=} {end_ms=}: "
             f"oldest {rows[0][0]}, latest {rows[-1][0]}"
         )
     return [{"t": r.timestamp_ms, "p": r.power_watts, "e": r.energy_in_kwh} for r in rows]

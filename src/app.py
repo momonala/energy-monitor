@@ -12,6 +12,7 @@ from flask import jsonify
 from flask import redirect
 from flask import render_template
 from flask import request
+from flask import url_for
 from flask_apscheduler import APScheduler
 from flask_compress import Compress
 
@@ -22,6 +23,8 @@ from src.config import SERVER_URL
 from src.config import SPYGLASS_DASHBOARD_URL
 from src.config import TASMOTA_UI_URL
 from src.config import TOPIC
+from src.database import DEFAULT_READINGS_BUCKET_MS
+from src.database import MAX_READINGS_BUCKET_MS
 from src.database import get_daily_energy_usage
 from src.database import get_monthly_avg_daily_usage
 from src.database import get_moving_avg_daily_usage
@@ -48,6 +51,20 @@ app = Flask(
     template_folder=str(project_root / "templates"),
 )
 app.config["SCHEDULER_API_ENABLED"] = False
+# Static files carry a content-version query param (see static_url), so they
+# can be cached hard: a changed file gets a new URL instead of a revalidation.
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(days=30)
+
+
+@app.template_global()
+def static_url(filename: str) -> str:
+    """URL for a static file, versioned by its mtime so edits bust the cache."""
+    path = Path(app.static_folder) / filename
+    try:
+        version = int(path.stat().st_mtime)
+    except OSError:
+        version = 0
+    return url_for("static", filename=filename, v=version)
 Compress(app)  # Enable gzip compression for responses > 500 bytes
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
@@ -141,10 +158,18 @@ def compare():
 
 @app.get("/api/readings")
 def api_readings():
-    """Return readings as {t, p, e} for timestamp, power, energy."""
+    """Return readings as {t, p, e} for timestamp, power, energy.
+
+    Optional bucket_ms selects the downsampling resolution (0 = raw rows);
+    defaults to 2-minute buckets, clamped to at most one day.
+    """
     start = parse_time_param(request.args.get("start"))
     end = parse_time_param(request.args.get("end"))
-    data = get_readings(start=start, end=end)
+    bucket_ms = request.args.get("bucket_ms", type=int)
+    if bucket_ms is None:
+        bucket_ms = DEFAULT_READINGS_BUCKET_MS
+    bucket_ms = max(0, min(bucket_ms, MAX_READINGS_BUCKET_MS))
+    data = get_readings(start=start, end=end, bucket_ms=bucket_ms)
     return jsonify(data)
 
 
