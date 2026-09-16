@@ -799,8 +799,6 @@
       btnRefresh.textContent = "Refreshing...";
       btnRefresh.classList.add("btn-loading");
       try {
-        // Clear Python cache first, then refresh data
-        await fetch("/api/clear_cache", { cache: "no-cache" }).catch(() => {});
         await loadChartWindow();
       } finally {
         btnRefresh.disabled = false;

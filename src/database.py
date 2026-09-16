@@ -3,7 +3,6 @@ import os
 import sqlite3
 from datetime import datetime
 from datetime import timedelta
-from functools import lru_cache
 
 import sqlalchemy
 from sqlalchemy import Column
@@ -23,7 +22,6 @@ from src.config import DATABASE_PATH
 from src.config import DATABASE_URL
 from src.diagnostics import classify_stall
 from src.helpers import local_timezone
-from src.helpers import timed
 from src.observability import get_logger
 from src.observability import metrics
 
@@ -363,22 +361,10 @@ def get_readings(
     Fetch readings in 2-min buckets (max per bucket). Optionally filter by time range.
     Returns a list of dicts with timestamp (ms since epoch), power_watts, and energy_in_kwh.
     Aggregation is done in SQL so we never load full raw rows for large ranges.
-
-    Timestamps are rounded down to the minute before hitting the cache: the browser sends
-    ms-precision bounds, so without rounding every request is a unique key and the cache
-    never hits (it only grows). Minute granularity is well below the 2-min SQL bucketing.
     """
     tz = local_timezone()
     start_bound = start.astimezone(tz) if start is not None else datetime.now(tz) - timedelta(weeks=52)
     end_bound = end.astimezone(tz) if end is not None else datetime.now(tz)
-    start_bound = start_bound.replace(second=0, microsecond=0)
-    end_bound = end_bound.replace(second=0, microsecond=0)
-    return get_readings_cached(start_bound, end_bound)
-
-
-@lru_cache(maxsize=1000)
-@timed
-def get_readings_cached(start_bound: datetime, end_bound: datetime) -> list[dict]:
     bucket = func.strftime("%s", EnergyReading.timestamp) / 120
     with metrics.timed("db.get_readings"):
         with SessionLocal() as session:

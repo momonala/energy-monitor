@@ -25,7 +25,6 @@ from src.config import TOPIC
 from src.database import get_daily_energy_usage
 from src.database import get_monthly_avg_daily_usage
 from src.database import get_moving_avg_daily_usage
-from src.database import get_readings_cached
 from src.database import get_readings
 from src.database import get_stats
 from src.database import latest_energy_reading
@@ -222,20 +221,6 @@ def api_stats():
             "start": int(start.timestamp() * 1000),
             "end": int(end.timestamp() * 1000),
             "stats": stats,
-        }
-    )
-
-
-@app.get("/api/clear_cache")
-def clear_cache():
-    """Clear Python LRU cache for get_readings. Visit in browser or call via curl."""
-    cache_info = get_readings_cached.cache_info()
-    get_readings_cached.cache_clear()
-    logger.info(f"Cleared cache: {cache_info}")
-    return jsonify(
-        {
-            "cleared": True,
-            "previous": {"hits": cache_info.hits, "misses": cache_info.misses, "size": cache_info.currsize},
         }
     )
 

@@ -1,29 +1,6 @@
-import time
 from datetime import datetime
 from datetime import timezone
 from functools import lru_cache
-from functools import wraps
-
-from src.observability import get_logger
-
-logger = get_logger(__name__)
-
-
-def timed(func):
-    """Decorator to log function execution time with args."""
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        start = time.perf_counter()
-        result = func(*args, **kwargs)
-        elapsed_ms = (time.perf_counter() - start) * 1000
-        args_str = ", ".join(repr(a) for a in args) if args else ""
-        kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items()) if kwargs else ""
-        params = ", ".join(filter(None, [args_str, kwargs_str])) or "no args"
-        logger.debug(f"[{func.__name__}]({params}) completed in {elapsed_ms:.1f}ms")
-        return result
-
-    return wrapper
 
 
 @lru_cache(maxsize=1)

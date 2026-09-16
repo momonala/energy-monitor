@@ -150,20 +150,6 @@ def test_api_stats_swaps_inverted_range(client):
             assert call_args["end"] == later
 
 
-def test_clear_cache_returns_previous_stats(client):
-    """Cache clear endpoint returns previous cache statistics."""
-    with patch("src.app.get_readings_cached") as mock_readings:
-        mock_readings.cache_info.return_value = type(
-            "CacheInfo", (), {"hits": 10, "misses": 2, "currsize": 5}
-        )()
-        response = client.get("/api/clear_cache")
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data["cleared"] is True
-        assert data["previous"]["hits"] == 10
-        assert data["previous"]["misses"] == 2
-
-
 def test_live_power_returns_payload(client):
     """Live power endpoint passes through the database payload as JSON."""
     payload = {"t": 1701432000000, "w": 512.3, "age_s": 4.2, "stale": False}

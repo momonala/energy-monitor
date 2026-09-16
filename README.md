@@ -150,7 +150,6 @@ it reads as working and is silently always false.
 | `/api/live_power`     | GET    | Latest instantaneous power draw, for the live readout    |
 | `/api/energy_summary` | GET    | Get avg daily usage, daily usage, and 30d moving average |
 | `/api/stats`          | GET    | Compute statistics for a time range                      |
-| `/api/clear_cache`    | GET    | Clear the in-process LRU cache backing `/api/readings`   |
 | `/status`             | GET    | Service health, ingestion freshness, reading counts      |
 | `/observability`      | GET    | Redirects to the Spyglass-hosted observability dashboard |
 
