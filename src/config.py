@@ -26,89 +26,30 @@ DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 TUNNEL_NAME = _tool_config["tunnel_name"]
 DOMAIN_SUFFIX = _tool_config["domain_suffix"]
 
+_CONFIG_VALUES = {
+    "project_name": _project_config["name"],
+    "project_version": _project_config["version"],
+    **_tool_config,
+    "database_url": DATABASE_URL,
+}
 
-# fmt: off
-def config_cli(
-    # Show all
-    all: bool = typer.Option(False, "--all", help="Show all configuration values"),
-    # Project keys
-    project_name: bool = typer.Option(False, "--project-name", help=_project_config['name']),
-    project_version: bool = typer.Option(False, "--project-version", help=_project_config['version']),
-    # Server settings
-    server_url: bool = typer.Option(False, "--server-url", help=SERVER_URL),
-    flask_port: bool = typer.Option(False, "--flask-port", help=str(FLASK_PORT)),
-    mqtt_port: bool = typer.Option(False, "--mqtt-port", help=str(MQTT_PORT)),
-    spyglass_host: bool = typer.Option(False, "--spyglass-host", help=SPYGLASS_HOST),
-    spyglass_dashboard_url: bool = typer.Option(
-        False, "--spyglass-dashboard-url", help=SPYGLASS_DASHBOARD_URL
-    ),
-    service_monitor_url: bool = typer.Option(
-        False, "--service-monitor-url", help=SERVICE_MONITOR_URL
-    ),
-    # MQTT settings
-    mqtt_topic: bool = typer.Option(False, "--mqtt-topic", help=TOPIC),
-    tasmota_ui_url: bool = typer.Option(False, "--tasmota-ui-url", help=TASMOTA_UI_URL),
-    gateway_ip: bool = typer.Option(False, "--gateway-ip", help=GATEWAY_IP),
-    access_point_ip: bool = typer.Option(False, "--access-point-ip", help=ACCESS_POINT_IP),
-    # Database settings
-    database_path: bool = typer.Option(False, "--database-path", help=_tool_config['database_path']),
-    database_url: bool = typer.Option(False, "--database-url", help=DATABASE_URL),
-    # Cloudflare settings
-    tunnel_name: bool = typer.Option(False, "--tunnel-name", help=TUNNEL_NAME),
-    domain_suffix: bool = typer.Option(False, "--domain-suffix", help=DOMAIN_SUFFIX),
-) -> None:
-# fmt: on
-    """Get configuration values from pyproject.toml."""
-    if all:
-        typer.echo(f"project_name={_project_config['name']}")
-        typer.echo(f"project_version={_project_config['version']}")
-        typer.echo(f"server_url={SERVER_URL}")
-        typer.echo(f"flask_port={FLASK_PORT}")
-        typer.echo(f"mqtt_port={MQTT_PORT}")
-        typer.echo(f"mqtt_topic={TOPIC}")
-        typer.echo(f"tasmota_ui_url={TASMOTA_UI_URL}")
-        typer.echo(f"gateway_ip={GATEWAY_IP}")
-        typer.echo(f"access_point_ip={ACCESS_POINT_IP}")
-        typer.echo(f"database_path={_tool_config['database_path']}")
-        typer.echo(f"database_url={DATABASE_URL}")
-        typer.echo(f"tunnel_name={TUNNEL_NAME}")
-        typer.echo(f"domain_suffix={DOMAIN_SUFFIX}")
-        typer.echo(f"spyglass_host={SPYGLASS_HOST}")
-        typer.echo(f"spyglass_dashboard_url={SPYGLASS_DASHBOARD_URL}")
-        typer.echo(f"service_monitor_url={SERVICE_MONITOR_URL}")
+
+def config_cli(key: str = typer.Argument(None, help="Config key to print; omit to print all")) -> None:
+    """Print configuration values from pyproject.toml as key=value lines, or one bare value."""
+    if key is None:
+        for name, value in _CONFIG_VALUES.items():
+            typer.echo(f"{name}={value}")
         return
-
-    # (flag, value) pairs — a dict keyed by the booleans would collapse to two entries
-    flag_values = [
-        (project_name, _project_config["name"]),
-        (project_version, _project_config["version"]),
-        (server_url, SERVER_URL),
-        (flask_port, FLASK_PORT),
-        (mqtt_port, MQTT_PORT),
-        (mqtt_topic, TOPIC),
-        (tasmota_ui_url, TASMOTA_UI_URL),
-        (gateway_ip, GATEWAY_IP),
-        (access_point_ip, ACCESS_POINT_IP),
-        (database_path, _tool_config["database_path"]),
-        (database_url, DATABASE_URL),
-        (tunnel_name, TUNNEL_NAME),
-        (domain_suffix, DOMAIN_SUFFIX),
-        (spyglass_host, SPYGLASS_HOST),
-        (spyglass_dashboard_url, SPYGLASS_DASHBOARD_URL),
-        (service_monitor_url, SERVICE_MONITOR_URL),
-    ]
-
-    for is_set, value in flag_values:
-        if is_set:
-            typer.echo(value)
-            return
-
-    typer.secho("Error: No config key specified. Use --help to see available options.", fg=typer.colors.RED, err=True)
-    raise typer.Exit(1)
+    if key not in _CONFIG_VALUES:
+        known = ", ".join(_CONFIG_VALUES)
+        typer.secho(f"Error: unknown config key '{key}'. Known keys: {known}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1)
+    typer.echo(_CONFIG_VALUES[key])
 
 
 def main():
     typer.run(config_cli)
+
 
 if __name__ == "__main__":
     main()

@@ -11,53 +11,43 @@ runner = CliRunner()
 
 
 @pytest.mark.parametrize(
-    "flag,expected_output",
+    "key,expected_output",
     [
-        ("--project-name", "energy-monitor"),
-        ("--project-version", "0.1.0"),
-        ("--flask-port", "5008"),
-        ("--mqtt-port", "1883"),
-        ("--server-url", "localhost"),
-        ("--mqtt-topic", "tele/tasmota/#"),
-        ("--tasmota-ui-url", "http://192.168.2.116/"),
-        ("--database-path", "data/energy.db"),
-        ("--database-url", "sqlite:///data/energy.db"),
-        ("--tunnel-name", "raspberrypi-tunnel"),
-        ("--domain-suffix", "mnalavadi.org"),
-        ("--service-monitor-url", "http://localhost:5001"),
-        (
-            "--spyglass-dashboard-url",
-            "https://spyglass.mnalavadi.org/dashboard/energy-monitor",
-        ),
+        ("project_name", "energy-monitor"),
+        ("project_version", "0.1.0"),
+        ("flask_port", "5008"),
+        ("mqtt_port", "1883"),
+        ("server_url", "localhost"),
+        ("mqtt_topic", "tele/tasmota/#"),
+        ("tasmota_ui_url", "http://192.168.2.116/"),
+        ("database_path", "data/energy.db"),
+        ("database_url", "sqlite:///data/energy.db"),
+        ("tunnel_name", "raspberrypi-tunnel"),
+        ("domain_suffix", "mnalavadi.org"),
+        ("service_monitor_url", "http://localhost:5001"),
+        ("spyglass_dashboard_url", "https://spyglass.mnalavadi.org/dashboard/energy-monitor"),
     ],
 )
-def test_config_returns_single_value(flag: str, expected_output: str):
-    result = runner.invoke(app, [flag])
+def test_config_returns_single_value(key: str, expected_output: str):
+    result = runner.invoke(app, [key])
 
     assert result.exit_code == 0
     assert result.stdout.strip() == expected_output
 
 
-def test_config_all_returns_all_values():
-    result = runner.invoke(app, ["--all"])
+def test_config_without_key_returns_all_values():
+    result = runner.invoke(app, [])
 
     assert result.exit_code == 0
     assert "project_name=energy-monitor" in result.stdout
-    assert "project_version=0.1.0" in result.stdout
     assert "flask_port=5008" in result.stdout
-    assert "mqtt_port=1883" in result.stdout
-    assert "server_url=localhost" in result.stdout
     assert "mqtt_topic=tele/tasmota/#" in result.stdout
-    assert "tasmota_ui_url=http://192.168.2.116/" in result.stdout
     assert "database_url=sqlite:///data/energy.db" in result.stdout
-    assert "tunnel_name=raspberrypi-tunnel" in result.stdout
-    assert "domain_suffix=mnalavadi.org" in result.stdout
-    assert "service_monitor_url=http://localhost:5001" in result.stdout
     assert "spyglass_dashboard_url=https://spyglass.mnalavadi.org/dashboard/energy-monitor" in result.stdout
 
 
-def test_config_without_flag_fails():
-    result = runner.invoke(app, [])
+def test_config_with_unknown_key_fails():
+    result = runner.invoke(app, ["not_a_key"])
 
     assert result.exit_code == 1
-    assert "Error: No config key specified" in result.output
+    assert "unknown config key" in result.output

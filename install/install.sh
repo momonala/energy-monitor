@@ -18,15 +18,15 @@ echo "✅ Installing project dependencies with uv"
 uv sync
 
 # Extract configuration from pyproject.toml
-service_name=$(uv run config --project-name)
-service_port=$(uv run config --flask-port)
-tunnel_name=$(uv run config --tunnel-name)
-domain_suffix=$(uv run config --domain-suffix)
+service_name=$(uv run config project_name)
+service_port=$(uv run config flask_port)
+tunnel_name=$(uv run config tunnel_name)
+domain_suffix=$(uv run config domain_suffix)
 mqtt_service_name="${service_name}_mqtt"
 
 echo "📋 Configuration:"
 {
-    uv run config --all | while IFS='=' read -r key value; do
+    uv run config | while IFS='=' read -r key value; do
         echo -e "   ${CYAN}${key}${NC}|${YELLOW}${value}${NC}"
     done
     echo -e "   ${CYAN}cloudflare_domain${NC}|${YELLOW}${service_name}.${domain_suffix}${NC}"
