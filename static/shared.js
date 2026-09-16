@@ -27,7 +27,7 @@ function readChartTheme() {
     selectFill: getCssVar("--series-select-fill"),
     selectStroke: getCssVar("--series-select-stroke"),
     accent: getCssVar("--accent"),
-    fontSans: getCssVar("--font-sans") || '"Inter", system-ui, sans-serif',
+    fontSans: getCssVar("--font-sans") || "system-ui, sans-serif",
   };
 }
 

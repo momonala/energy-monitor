@@ -368,9 +368,9 @@
 
     if (dailyTableTitle) {
       if (baseline != null) {
-        dailyTableTitle.textContent = `Daily Breakdown (30d avg: ${Fmt.n(baseline, 1)} kWh, €${Fmt.n(baselineCost, 2)})`;
+        dailyTableTitle.textContent = `Daily breakdown (30d avg: ${Fmt.n(baseline, 1)} kWh, €${Fmt.n(baselineCost, 2)})`;
       } else {
-        dailyTableTitle.textContent = "Daily Breakdown";
+        dailyTableTitle.textContent = "Daily breakdown";
       }
     }
 

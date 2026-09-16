@@ -92,14 +92,14 @@
   position: absolute;
   top: var(--space-sm);
   left: var(--chart-axis-offset);
-  background: rgba(22, 23, 26, 0.85);
+  background: var(--bg-overlay);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-sm);
   padding: var(--space-xs) var(--space-sm);
   box-shadow: var(--shadow-card);
-  font-size: 11px;
+  font-size: var(--text-meta);
   color: var(--label);
   pointer-events: none;
   white-space: nowrap;
@@ -161,20 +161,11 @@
   color: var(--label);
 }
 
-.compare-search-box {
-  border: 0.5px solid var(--glass-border);
-  border-radius: var(--radius-lg);
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-}
-
 .compare-search-row {
   display: flex;
   align-items: stretch;
   flex-wrap: wrap;
+  gap: var(--space-sm);
 }
 
 .compare-calendar-block {
@@ -188,9 +179,10 @@
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  padding: 14px var(--space-lg);
-  border: none;
-  background: transparent;
+  padding: var(--space-md) var(--space-lg);
+  border: 0.5px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--glass-bg);
   color: var(--label);
   font: inherit;
   cursor: pointer;
@@ -229,7 +221,7 @@
 }
 
 .compare-period-field-range {
-  font-size: 0.9375rem;
+  font-size: var(--text-subtitle);
   color: var(--label);
 }
 
@@ -238,7 +230,6 @@
   margin-left: auto;
   display: flex;
   align-items: center;
-  padding: var(--space-md) var(--space-lg);
 }
 
 .compare-calendar-dropdown {
@@ -269,9 +260,6 @@
   width: 100%;
   max-width: 280px;
   padding: var(--space-sm);
-  border-radius: var(--radius-sm);
-  background: var(--glass-bg-deep);
-  border: 0.5px solid var(--glass-border-inner);
 }
 
 .range-calendar-nav {
@@ -288,12 +276,12 @@
   border-radius: var(--radius-sm);
   background: var(--glass-bg);
   color: var(--label);
-  font-size: 0.875rem;
+  font-size: var(--text-body);
   cursor: pointer;
 }
 
 .range-calendar-month {
-  font-size: 0.9375rem;
+  font-size: var(--text-subtitle);
   font-weight: 600;
   color: var(--label);
   min-width: 8em;
@@ -322,8 +310,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.8125rem;
-  border-radius: 6px;
+  font-size: var(--text-body);
+  border-radius: var(--radius-xs);
   cursor: pointer;
   border: none;
   background: transparent;
@@ -341,7 +329,7 @@
 }
 
 .range-calendar .day.in-range {
-  background: rgba(10, 132, 255, 0.2);
+  background: var(--accent-soft-strong);
 }
 
 .range-calendar .day.start,
@@ -352,7 +340,7 @@
 
 .compare-loading {
   color: var(--label-tertiary);
-  font-size: 0.875rem;
+  font-size: var(--text-body);
   text-align: center;
 }
 
@@ -384,7 +372,7 @@
 
 .compare-period-label {
   margin: 0 0 var(--space-sm);
-  font-size: 0.9375rem;
+  font-size: var(--text-subtitle);
   font-weight: 600;
   color: var(--label-secondary);
 }
@@ -416,7 +404,7 @@
 
 .compare-diff-heading {
   margin: 0 0 var(--space-sm);
-  font-size: 0.9375rem;
+  font-size: var(--text-subtitle);
   font-weight: 600;
   color: var(--label-secondary);
   display: flex;
@@ -482,7 +470,7 @@
 }
 
 .mobile-live-head .stats-title {
-  margin-right: auto;
+  margin: 0 auto 0 0;
 }
 
 .mobile-live-head .live-power__meta {
@@ -501,15 +489,7 @@
 .mobile-controls > * {
   flex: 1;
   min-height: 44px;
-  font-size: 14px;
-}
-
-/* Peer of a button now, so it needs to read as a dropdown on its own. */
-.mobile-days-select {
-  padding-right: calc(var(--space-md) + 12px);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M5 6L0 0h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right var(--space-sm) center;
+  font-size: var(--text-body);
 }
 
 .js-chart-content {
@@ -543,7 +523,7 @@
   padding: var(--space-sm) var(--space-md);
   min-height: 36px;
   min-width: 60px;
-  font-size: 12px;
+  font-size: var(--text-label);
   font-weight: 600;
   border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-pill);
@@ -602,13 +582,13 @@
 }
 
 .mobile-stat-label {
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 500;
   color: var(--label-secondary);
 }
 
 .mobile-stat-value {
-  font-size: 18px;
+  font-size: var(--text-stat);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
@@ -622,7 +602,7 @@
 .mobile-desktop-link {
   color: var(--label-secondary);
   text-decoration: none;
-  font-size: 14px;
+  font-size: var(--text-body);
   padding: var(--space-sm) var(--space-md);
   border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-sm);
@@ -667,5 +647,12 @@
 
   .stats-card {
     max-height: 300px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compare-results {
+    transition: none;
+    transform: none;
   }
 }

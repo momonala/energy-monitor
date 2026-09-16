@@ -720,7 +720,7 @@
       avgMode = avgMode === '30d' ? 'total' : '30d';
       btnToggleAvgMode.textContent = avgMode === '30d' ? '30d' : 'Total';
       if (hoverTypicalLabel) {
-        hoverTypicalLabel.textContent = avgMode === '30d' ? '30d Avg Daily Usage (kWh):' : 'Total Avg Daily Usage (kWh):';
+        hoverTypicalLabel.textContent = avgMode === '30d' ? '30d avg daily usage (kWh):' : 'Total avg daily usage (kWh):';
       }
       if (u && u.series && u.series[5]) {
         u.series[5].label = avgMode === '30d' ? "30d Avg Daily Usage" : "Total Avg Daily Usage";

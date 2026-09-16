@@ -5,9 +5,10 @@
 {% block page_title %}Mobile view{% endblock %}
 
 {% block head_extra %}
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 {% endblock %}
 
+{% block bg_video %}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% block sidebar_script %}{% endblock %}
 
@@ -18,9 +19,10 @@
 {% block main_class %}mobile-main{% endblock %}
 
 {% block content %}
+<h1 class="visually-hidden">Energy monitor</h1>
 <section class="mobile-live-card card">
   <div class="mobile-live-head">
-    <span class="stats-title">Current Usage</span>
+    <h2 class="stats-title">Current usage</h2>
     {# The reading timestamp lands here (see startLivePower's metaHost), next to the dot,
        so the header row carries all the freshness info and the figure stands alone. #}
     <span id="live-meta"></span>
@@ -32,7 +34,7 @@
 </section>
 
 <div class="mobile-controls">
-  <select id="days-input" class="control-select mobile-days-select" aria-label="Lookback period in days">
+  <select id="days-input" class="control-select" aria-label="Lookback period in days">
     <option value="7">7 days</option>
     <option value="10">10 days</option>
     <option value="14">14 days</option>
@@ -52,13 +54,13 @@
     <button type="button" class="mobile-toggle mobile-toggle-power active btn" data-series="1" aria-pressed="true">Power</button>
     <button type="button" class="mobile-toggle mobile-toggle-energy active btn" data-series="2" aria-pressed="true">Meter</button>
     <button type="button" class="mobile-toggle mobile-toggle-daily active btn" data-series="3" aria-pressed="true">Daily</button>
-    <button type="button" class="mobile-toggle mobile-toggle-typical active btn" data-series="4" aria-pressed="true">30d Avg</button>
+    <button type="button" class="mobile-toggle mobile-toggle-typical active btn" data-series="4" aria-pressed="true">30d avg</button>
   </div>
 </section>
 
 <section class="mobile-stats-grid">
   <div class="mobile-stat-card card">
-    <div class="stats-title">Energy &amp; Cost</div>
+    <h2 class="stats-title">Energy &amp; cost</h2>
     <div class="mobile-stat-row mobile-stat-header">
       <span class="mobile-stat-label"></span>
       <span class="mobile-stat-col-header text-energy">Real</span>
@@ -77,7 +79,7 @@
   </div>
 
   <div class="mobile-stat-card card">
-    <div class="stats-title">Power Statistics</div>
+    <h2 class="stats-title">Power statistics</h2>
     <div class="mobile-stat-row">
       <span class="mobile-stat-label text-power">Average</span>
       <span class="mobile-stat-value text-power"><span id="stat-avg">–</span> W</span>
@@ -93,24 +95,24 @@
   </div>
 
   <div class="mobile-stat-card card">
-    <div class="stats-title">Data Info</div>
+    <h2 class="stats-title">Data info</h2>
     <div class="mobile-stat-row">
       <span class="mobile-stat-label">Meter total</span>
       <span class="mobile-stat-value"><span id="stat-meter-total" class="text-energy" aria-live="polite">–</span></span>
     </div>
     <div class="mobile-stat-row">
-      <span class="mobile-stat-label">Data Points</span>
+      <span class="mobile-stat-label">Data points</span>
       <span class="mobile-stat-value"><span id="stat-count">–</span></span>
     </div>
     <div class="mobile-stat-row">
-      <span class="mobile-stat-label">Time Range</span>
+      <span class="mobile-stat-label">Time range</span>
       <span class="mobile-stat-value"><span id="stat-range">–</span></span>
     </div>
   </div>
 </section>
 
 <section class="mobile-stat-card card js-daily-table-section">
-  <div class="stats-title" id="daily-table-title">Daily Breakdown</div>
+  <h2 class="stats-title" id="daily-table-title">Daily breakdown</h2>
   <div class="table-wrap">
     <table class="data-table" id="daily-table">
       <thead>
@@ -127,7 +129,7 @@
 </section>
 
 <footer class="mobile-footer">
-  <a href="/" class="mobile-desktop-link">View Desktop Dashboard →</a>
+  <a href="/" class="mobile-desktop-link">View desktop dashboard →</a>
 </footer>
 {% endblock %}
 

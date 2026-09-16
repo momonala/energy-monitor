@@ -27,7 +27,7 @@
 }
 
 .sidebar-brand-link {
-  font-size: 13px;
+  font-size: var(--text-body);
   font-weight: 700;
   letter-spacing: 0.3px;
   color: var(--label);
@@ -64,7 +64,7 @@
   border-radius: var(--radius-sm);
   color: var(--label-secondary);
   text-decoration: none;
-  font-size: 13px;
+  font-size: var(--text-body);
   transition: background 0.12s, color 0.12s;
 }
 
@@ -150,7 +150,7 @@ body.sidebar-collapsed .sidebar-nav {
 
 .last-updated,
 .header-meta {
-  font-size: 11px;
+  font-size: var(--text-meta);
   color: var(--label-tertiary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -161,7 +161,7 @@ body.sidebar-collapsed .sidebar-nav {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-meta);
   font-weight: 500;
   color: var(--label-tertiary);
   font-variant-numeric: tabular-nums;
@@ -200,7 +200,7 @@ body.sidebar-collapsed .sidebar-nav {
   gap: 3px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 15px;
+  font-size: var(--text-subtitle);
   font-weight: 600;
   letter-spacing: -0.4px;
   color: var(--series-power);
@@ -251,7 +251,7 @@ body.sidebar-collapsed .sidebar-nav {
   -webkit-backdrop-filter: blur(12px);
   box-shadow: var(--glass-specular);
   color: var(--label-secondary);
-  font-size: 13px;
+  font-size: var(--text-body);
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
@@ -272,8 +272,8 @@ body.sidebar-collapsed .sidebar-nav {
 
 .btn.active,
 .btn.is-active {
-  background: rgba(255, 255, 255, 0.14);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 4px rgba(0, 0, 0, 0.3);
+  background: var(--fill-active);
+  box-shadow: var(--shadow-card);
   color: var(--label);
   border-color: var(--accent-ring-border);
 }
@@ -285,12 +285,12 @@ body.sidebar-collapsed .sidebar-nav {
 
 .btn-primary {
   border-color: var(--accent-ring-border);
-  background: rgba(10, 132, 255, 0.12);
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: rgba(10, 132, 255, 0.2);
+  background: var(--accent-soft-strong);
 }
 
 .control-input,
@@ -303,7 +303,7 @@ select.btn {
   border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-sm);
   color: var(--label);
-  font-size: 13px;
+  font-size: var(--text-body);
   font-family: inherit;
   outline: none;
   appearance: none;
@@ -319,7 +319,8 @@ select.btn:focus {
   box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
-select.btn {
+select.btn,
+select.control-select {
   padding-right: calc(var(--space-md) + 12px);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M5 6L0 0h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -349,7 +350,7 @@ select.btn option {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   box-shadow: none;
-  font-size: 12px;
+  font-size: var(--text-label);
   padding: 4px 10px;
   min-height: unset;
 }
@@ -372,15 +373,15 @@ select.btn option {
   position: relative;
   overflow: hidden;
   color: var(--label);
-  border-color: rgba(255, 69, 58, 0.5);
-  background: var(--danger-soft);
+  border-color: var(--accent-ring-border);
+  background: var(--accent-soft);
 }
 
 .btn-loading::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(60deg, transparent 0%, rgba(255, 69, 58, 0.35) 50%, transparent 100%);
+  background: linear-gradient(60deg, transparent 0%, var(--accent-sweep) 50%, transparent 100%);
   transform: translateX(-100%);
   animation: refresh-sweep 1.2s linear infinite;
 }
@@ -414,7 +415,7 @@ select.btn option {
 }
 
 .card-subtitle {
-  font-size: 12px;
+  font-size: var(--text-label);
   color: var(--label-tertiary);
   margin: 0;
 }
@@ -447,7 +448,7 @@ select.btn option {
 
 .stat-value,
 .stat .value {
-  font-size: 18px;
+  font-size: var(--text-stat);
   font-weight: 600;
   color: var(--label);
   font-variant-numeric: tabular-nums;
@@ -466,7 +467,7 @@ select.btn option {
   font-size: var(--text-section);
   font-weight: 600;
   color: var(--label-secondary);
-  margin-bottom: var(--space-md);
+  margin: 0 0 var(--space-md);
 }
 
 .stats-grid {
@@ -498,7 +499,7 @@ select.btn option {
 
 .data-table {
   width: 100%;
-  font-size: 13px;
+  font-size: var(--text-body);
   color: var(--label);
   font-variant-numeric: tabular-nums;
 }
@@ -537,7 +538,7 @@ select.btn option {
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   color: transparent;
   user-select: none;
 }
@@ -553,18 +554,18 @@ select.btn option {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(22, 23, 26, 0.75);
+  background: var(--bg-overlay);
   backdrop-filter: blur(8px);
   border-radius: var(--radius-lg);
   z-index: 10;
   color: var(--label-tertiary);
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 
 .error-banner {
   padding: 12px 16px;
   border-radius: var(--radius-md);
-  border: 0.5px solid rgba(255, 69, 58, 0.4);
+  border: 0.5px solid var(--danger-border);
   background: var(--danger-soft);
   color: var(--danger-text);
   font-size: 13px;
@@ -574,7 +575,14 @@ select.btn option {
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-sm);
   background: var(--warning-soft);
-  border: 0.5px solid rgba(255, 214, 10, 0.4);
+  border: 0.5px solid var(--warning-border);
   color: var(--warning);
   font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .btn-loading::after {
+    animation: none;
+  }
 }
