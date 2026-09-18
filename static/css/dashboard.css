@@ -548,6 +548,11 @@
   margin-top: var(--space-sm);
 }
 
+/* Every column is a fixed-width readout here, the date included. */
+.mobile-tile .data-table td:first-child {
+  font-family: var(--font-mono);
+}
+
 /* Range and chart disclosure are both "how do I want to look at this" — one bare
    row, no card chrome, so the fold isn't three stacked boxes before any data. */
 .mobile-controls {

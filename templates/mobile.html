@@ -27,12 +27,11 @@
     </span>
   </div>
   <div id="live-power" class="live-power live-power--large" role="status" aria-live="polite"></div>
-  {# startLivePower parks its reading time + age block in live-meta (see metaHost), so
-     freshness and the meter total share one sub-line under the figure, like the desktop tile. #}
   <div class="tile-sub">
-    <span id="live-meta"></span>
     <span><span class="tile-sub-key">meter</span> <span id="stat-meter-total" aria-live="polite">–</span> kWh</span>
   </div>
+  {# startLivePower parks its reading time + age block here (see metaHost). #}
+  <div class="tile-sub" id="live-meta"></div>
 </section>
 
 <div class="mobile-controls">

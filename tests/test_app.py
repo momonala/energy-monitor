@@ -3,28 +3,28 @@
 import re
 from datetime import datetime
 from datetime import timedelta
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from src.helpers import local_timezone
 
-_STATIC_CSS_IMPORT_RE = re.compile(r'@import\s+url\("(/static/[^"]+)"\)')
+_STYLESHEET_HREF_RE = re.compile(r'<link\s+rel="stylesheet"\s+href="([^"]+)"')
 
 
-def test_stylesheet_imports_are_served(client):
-    """Every CSS file imported by styles.css must exist and be served."""
-    styles_path = Path(__file__).resolve().parent.parent / "static" / "styles.css"
-    imported_paths = _STATIC_CSS_IMPORT_RE.findall(styles_path.read_text())
+def test_linked_stylesheets_are_served(client):
+    """Every stylesheet the rendered page links must exist and be served as CSS."""
+    page = client.get("/")
+    hrefs = _STYLESHEET_HREF_RE.findall(page.get_data(as_text=True))
+    page.close()
 
-    assert imported_paths, "styles.css should @import layered CSS files"
+    assert hrefs, "index page should link layered CSS files"
 
-    for path in imported_paths:
-        response = client.get(path)
-        assert response.status_code == 200, f"missing static asset: {path}"
-        assert response.content_type.startswith("text/css"), path
-        assert response.data.strip(), f"empty stylesheet: {path}"
+    for href in hrefs:
+        response = client.get(href)
+        assert response.status_code == 200, f"missing static asset: {href}"
+        assert response.content_type.startswith("text/css"), href
+        assert response.data.strip(), f"empty stylesheet: {href}"
         response.close()
 
 

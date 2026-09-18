@@ -65,6 +65,8 @@ def static_url(filename: str) -> str:
     except OSError:
         version = 0
     return url_for("static", filename=filename, v=version)
+
+
 Compress(app)  # Enable gzip compression for responses > 500 bytes
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
