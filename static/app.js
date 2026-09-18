@@ -15,6 +15,7 @@
     fetchJson,
     setConnectionStatus,
     startLivePower,
+    renderDelta: renderDeltaVsTypical,
     getDateKey,
     loadCostPerKwh,
     saveCostPerKwh,
@@ -714,21 +715,8 @@
 
   // ── Tiles ───────────────────────────────────────────────────────────────
   function renderDelta(el, realKwh, days) {
-    if (!el) return;
-    el.classList.remove("delta-up", "delta-down");
-    if (realKwh == null || !avgDailyEnergyUsage || !days) {
-      el.textContent = "";
-      return;
-    }
-    const typical = avgDailyEnergyUsage * days;
-    if (typical <= 0) {
-      el.textContent = "";
-      return;
-    }
-    const pct = ((realKwh - typical) / typical) * 100;
-    const up = pct >= 0;
-    el.textContent = `${up ? "↑" : "↓"} ${Fmt.n(Math.abs(pct), 0)}% vs typical`;
-    el.classList.add(up ? "delta-up" : "delta-down");
+    const typical = avgDailyEnergyUsage && days ? avgDailyEnergyUsage * days : null;
+    renderDeltaVsTypical(el, realKwh, typical);
   }
 
   function renderWindowTiles() {

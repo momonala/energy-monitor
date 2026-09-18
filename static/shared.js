@@ -164,7 +164,8 @@ function formatReadingTime(ms) {
  * @param {{intervalMs?: number, statusEl?: HTMLElement, metaHost?: HTMLElement,
  *          onUpdate?: (data: object|null) => void}} options
  *   metaHost receives the `.live-power__meta` block (`__time` + `__age`); defaults to `el`.
- *   Mobile parks it in the card header so the big figure keeps a line to itself.
+ *   Mobile parks it in the sub-line under the figure. The age ticks once a second between
+ *   polls, extrapolated from the server's `age_s` so phone clock skew never shows.
  *   onUpdate receives each payload (null on fetch failure) for custom rendering.
  * @returns {() => void} - Stop function
  */
@@ -196,6 +197,23 @@ function startLivePower(el, { intervalMs = LIVE_POWER_INTERVAL_MS, statusEl = nu
   let controller = null;
   let failures = 0;
   let stopped = false;
+  let ageTimer = null;
+  let lastAgeS = null;
+  let lastAgeAt = 0;
+
+  function renderAge() {
+    ageEl.textContent = lastAgeS == null ? "" : formatAge(lastAgeS + (Date.now() - lastAgeAt) / 1000);
+  }
+
+  function startAgeTicker() {
+    if (!ageEl || ageTimer) return;
+    ageTimer = setInterval(renderAge, 1000);
+  }
+
+  function stopAgeTicker() {
+    clearInterval(ageTimer);
+    ageTimer = null;
+  }
 
   function render(data) {
     const stale = !data || data.stale;
@@ -204,7 +222,10 @@ function startLivePower(el, { intervalMs = LIVE_POWER_INTERVAL_MS, statusEl = nu
       valueEl.textContent = watts == null ? "–" : Fmt.n(watts, 0);
       el.classList.toggle("is-stale", Boolean(stale));
       timeEl.textContent = formatReadingTime(data && data.t);
-      ageEl.textContent = stale ? formatAge(data && data.age_s) : "";
+      lastAgeS = data && data.age_s != null ? data.age_s : null;
+      lastAgeAt = Date.now();
+      renderAge();
+      startAgeTicker();
     }
     if (statusEl) setConnectionStatus(statusEl, !stale);
     if (onUpdate) onUpdate(data || null);
@@ -238,6 +259,7 @@ function startLivePower(el, { intervalMs = LIVE_POWER_INTERVAL_MS, statusEl = nu
   function onVisibilityChange() {
     if (document.hidden) {
       clearTimeout(timer);
+      stopAgeTicker();
       if (controller) controller.abort();
     } else {
       failures = 0;
@@ -252,10 +274,37 @@ function startLivePower(el, { intervalMs = LIVE_POWER_INTERVAL_MS, statusEl = nu
   function stop() {
     stopped = true;
     clearTimeout(timer);
+    stopAgeTicker();
     if (controller) controller.abort();
     document.removeEventListener("visibilitychange", onVisibilityChange);
   }
   return stop;
+}
+
+/**
+ * Describe real usage against typical as a percentage: `{ text: "↑ 12%", className: "delta-up" }`.
+ * Returns null when either side is missing or typical is non-positive.
+ */
+function describeDelta(realKwh, typicalKwh) {
+  if (realKwh == null || typicalKwh == null || typicalKwh <= 0) return null;
+  const pct = ((realKwh - typicalKwh) / typicalKwh) * 100;
+  const up = pct >= 0;
+  return { text: `${up ? "↑" : "↓"} ${Fmt.n(Math.abs(pct), 0)}%`, className: up ? "delta-up" : "delta-down" };
+}
+
+/**
+ * Render a "↑ 12% vs typical" comparison into `el`, or clear it when there is nothing to compare.
+ */
+function renderDelta(el, realKwh, typicalKwh) {
+  if (!el) return;
+  el.classList.remove("delta-up", "delta-down");
+  const delta = describeDelta(realKwh, typicalKwh);
+  if (!delta) {
+    el.textContent = "";
+    return;
+  }
+  el.textContent = `${delta.text} vs typical`;
+  el.classList.add(delta.className);
 }
 
 // =============================================================================
@@ -449,6 +498,8 @@ window.EnergyMonitor = {
   fetchJson,
   setConnectionStatus,
   startLivePower,
+  describeDelta,
+  renderDelta,
   getDateKey,
   alignDailyDataToTimestamps,
   loadCostPerKwh,

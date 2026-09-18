@@ -19,17 +19,20 @@
 
 {% block content %}
 <h1 class="visually-hidden">Energy monitor</h1>
-<section class="mobile-live-card card">
+<section class="tile card mobile-tile mobile-live-card">
   <div class="mobile-live-head">
-    <h2 class="stats-title">Current usage</h2>
-    {# The reading timestamp lands here (see startLivePower's metaHost), next to the dot,
-       so the header row carries all the freshness info and the figure stands alone. #}
-    <span id="live-meta"></span>
+    <h2 class="tile-label">Current usage</h2>
     <span id="status-connection" class="header-status header-status--pending" role="status" aria-label="Connection status">
       <span class="header-status__dot" aria-hidden="true"></span>
     </span>
   </div>
   <div id="live-power" class="live-power live-power--large" role="status" aria-live="polite"></div>
+  {# startLivePower parks its reading time + age block in live-meta (see metaHost), so
+     freshness and the meter total share one sub-line under the figure, like the desktop tile. #}
+  <div class="tile-sub">
+    <span id="live-meta"></span>
+    <span><span class="tile-sub-key">meter</span> <span id="stat-meter-total" aria-live="polite">–</span> kWh</span>
+  </div>
 </section>
 
 <div class="mobile-controls">
@@ -57,69 +60,33 @@
   </div>
 </section>
 
-<section class="mobile-stats-grid">
-  <div class="mobile-stat-card card">
-    <h2 class="stats-title">Energy &amp; cost</h2>
-    <div class="mobile-stat-row mobile-stat-header">
-      <span class="mobile-stat-label"></span>
-      <span class="mobile-stat-col-header text-energy">Real</span>
-      <span class="mobile-stat-col-header text-avg">Typical</span>
-    </div>
-    <div class="mobile-stat-row mobile-stat-row-3col">
-      <span class="mobile-stat-label">kWh</span>
-      <span class="mobile-stat-value text-energy"><span id="stat-energy">–</span></span>
-      <span class="mobile-stat-value text-avg"><span id="stat-typical-energy">–</span></span>
-    </div>
-    <div class="mobile-stat-row mobile-stat-row-3col">
-      <span class="mobile-stat-label">Cost €</span>
-      <span class="mobile-stat-value"><span id="stat-cost">–</span></span>
-      <span class="mobile-stat-value text-avg-light"><span id="stat-typical-cost">–</span></span>
-    </div>
+<section class="tile card mobile-tile">
+  <h2 class="tile-label">Energy used, last <span id="stat-range-label">7 days</span></h2>
+  <div class="tile-value"><span id="stat-energy">–</span><span class="tile-unit">kWh</span></div>
+  <div class="tile-sub">
+    <span>€<span id="stat-cost">–</span></span>
+    <span id="stat-energy-delta"></span>
   </div>
-
-  <div class="mobile-stat-card card">
-    <h2 class="stats-title">Power statistics</h2>
-    <div class="mobile-stat-row">
-      <span class="mobile-stat-label text-power">Average</span>
-      <span class="mobile-stat-value text-power"><span id="stat-avg">–</span> W</span>
-    </div>
-    <div class="mobile-stat-row">
-      <span class="mobile-stat-label text-power">Maximum</span>
-      <span class="mobile-stat-value text-power"><span id="stat-max">–</span> W</span>
-    </div>
-    <div class="mobile-stat-row">
-      <span class="mobile-stat-label text-power">Minimum</span>
-      <span class="mobile-stat-value text-power"><span id="stat-min">–</span> W</span>
-    </div>
-  </div>
-
-  <div class="mobile-stat-card card">
-    <h2 class="stats-title">Data info</h2>
-    <div class="mobile-stat-row">
-      <span class="mobile-stat-label">Meter total</span>
-      <span class="mobile-stat-value"><span id="stat-meter-total" class="text-energy" aria-live="polite">–</span></span>
-    </div>
-    <div class="mobile-stat-row">
-      <span class="mobile-stat-label">Data points</span>
-      <span class="mobile-stat-value"><span id="stat-count">–</span></span>
-    </div>
-    <div class="mobile-stat-row">
-      <span class="mobile-stat-label">Time range</span>
-      <span class="mobile-stat-value"><span id="stat-range">–</span></span>
-    </div>
+  <div class="tile-sub">
+    <span><span class="tile-sub-key">typical</span> <span id="stat-typical-energy">–</span> kWh</span>
+    <span>€<span id="stat-typical-cost">–</span></span>
   </div>
 </section>
 
-<section class="mobile-stat-card card js-daily-table-section">
-  <h2 class="stats-title" id="daily-table-title">Daily breakdown</h2>
+<section class="tile card mobile-tile js-daily-table-section">
+  <h2 class="tile-label">Daily breakdown</h2>
+  <div class="tile-sub">
+    <span><span class="tile-sub-key">30d avg</span> <span id="daily-baseline-kwh">–</span> kWh</span>
+    <span>€<span id="daily-baseline-cost">–</span></span>
+  </div>
   <div class="table-wrap">
     <table class="data-table" id="daily-table">
       <thead>
         <tr>
           <th>Date</th>
-          <th class="text-daily-energy">kWh</th>
+          <th>kWh</th>
           <th>€</th>
-          <th>+/-</th>
+          <th>vs typical</th>
         </tr>
       </thead>
       <tbody id="daily-table-body"></tbody>

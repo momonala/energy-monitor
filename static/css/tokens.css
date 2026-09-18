@@ -100,7 +100,6 @@
   --color-energy: var(--series-energy);
   --color-power: var(--series-power);
   --color-avg: var(--series-typical);
-  --color-avg-light: #a3a19b;
   --color-rolling-avg: var(--series-rolling);
   --color-daily-energy: var(--series-daily);
 }

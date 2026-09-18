@@ -595,6 +595,7 @@ select.btn option {
 }
 
 .tile-label {
+  margin: 0;
   font-size: var(--text-label);
   font-weight: 500;
   color: var(--label-tertiary);
@@ -744,7 +745,6 @@ select.btn option {
 .text-energy { color: var(--series-energy); }
 .text-power { color: var(--series-power); }
 .text-avg { color: var(--series-typical); }
-.text-avg-light { color: var(--color-avg-light); }
 .text-rolling-avg { color: var(--series-rolling); }
 .text-daily-energy { color: var(--series-daily); }
 .text-over { color: var(--danger-text); }

@@ -515,30 +515,37 @@
   -webkit-overflow-scrolling: touch;
 }
 
-.mobile-live-card {
+/* Mobile reuses the desktop tile anatomy (label / value / sub-line) with roomier
+   padding: one card per fact, and a thumb-sized touch target. */
+.mobile-tile {
   padding: var(--space-lg);
+  gap: var(--space-xs);
 }
 
-.mobile-live-card .live-power {
-  margin-top: var(--space-xs);
-}
-
-/* Title left, timestamp and dot right. Centre-aligned, not baseline: the dot has no
+/* Title left, connection dot right. Centre-aligned, not baseline: the dot has no
    text baseline of its own and drifts below the title when asked for one. */
 .mobile-live-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-sm);
-  min-height: 16px;
 }
 
-.mobile-live-head .stats-title {
-  margin: 0 auto 0 0;
-}
-
-.mobile-live-head .live-power__meta {
+/* The reading time + age block lives in the tile sub-line and takes that line's type. */
+.mobile-live-card .live-power__meta {
   margin: 0;
-  font-size: var(--text-meta);
+  gap: var(--space-xs);
+  font-size: inherit;
+  color: inherit;
+}
+
+.mobile-live-card .live-power__age:not(:empty)::before {
+  content: "· ";
+  color: var(--label-tertiary);
+}
+
+.mobile-tile .table-wrap {
+  margin-top: var(--space-sm);
 }
 
 /* Range and chart disclosure are both "how do I want to look at this" — one bare
@@ -604,58 +611,6 @@
 .mobile-toggle-energy { color: var(--series-energy); }
 .mobile-toggle-daily { color: var(--series-daily); }
 .mobile-toggle-typical { color: var(--series-typical); }
-
-.mobile-stats-grid {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.mobile-stat-card {
-  padding: var(--space-lg);
-}
-
-.mobile-stat-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: var(--space-sm) 0;
-}
-
-.mobile-stat-row + .mobile-stat-row {
-  border-top: 1px solid var(--separator);
-}
-
-.mobile-stat-row-3col {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: var(--space-sm);
-  text-align: right;
-}
-
-.mobile-stat-row-3col .mobile-stat-label {
-  text-align: left;
-}
-
-.mobile-stat-col-header {
-  font-size: var(--text-label);
-  font-weight: 600;
-  color: var(--label-secondary);
-  text-align: right;
-}
-
-.mobile-stat-label {
-  font-size: var(--text-subtitle);
-  font-weight: 500;
-  color: var(--label-secondary);
-}
-
-.mobile-stat-value {
-  font-size: 17px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  font-family: var(--font-mono);
-}
 
 .mobile-footer {
   padding: var(--space-lg);

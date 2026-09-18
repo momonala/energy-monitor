@@ -4,7 +4,7 @@
  * Uses shared utilities from shared.js
  */
 (() => {
-  const { Fmt, formatDuration, fetchJson, setConnectionStatus, startLivePower, getDateKey,
+  const { Fmt, fetchJson, setConnectionStatus, startLivePower, describeDelta, renderDelta, getDateKey,
           alignDailyDataToTimestamps, loadCostPerKwh, getBaseChartAxes, processReadingsData,
           readChartTheme } = window.EnergyMonitor;
 
@@ -12,23 +12,20 @@
   const chartLoading = document.getElementById("chart-loading");
   const statusConn = document.getElementById("status-connection");
   const daysInput = document.getElementById("days-input");
+  const statRangeLabel = document.getElementById("stat-range-label");
   const statEnergy = document.getElementById("stat-energy");
   const statCost = document.getElementById("stat-cost");
+  const statEnergyDelta = document.getElementById("stat-energy-delta");
   const statTypicalEnergy = document.getElementById("stat-typical-energy");
   const statTypicalCost = document.getElementById("stat-typical-cost");
-  const statAvg = document.getElementById("stat-avg");
-  const statMax = document.getElementById("stat-max");
-  const statMin = document.getElementById("stat-min");
-  const statCount = document.getElementById("stat-count");
-  const statRange = document.getElementById("stat-range");
   const dailyTableBody = document.getElementById("daily-table-body");
-  const dailyTableTitle = document.getElementById("daily-table-title");
+  const dailyBaselineKwh = document.getElementById("daily-baseline-kwh");
+  const dailyBaselineCost = document.getElementById("daily-baseline-cost");
   const statMeterTotal = document.getElementById("stat-meter-total");
   const livePowerEl = document.getElementById("live-power");
   const liveMetaEl = document.getElementById("live-meta");
   const btnShowChart = document.getElementById("btn-show-chart");
   const chartContent = document.querySelector(".js-chart-content");
-  const dailyTableSection = document.querySelector(".js-daily-table-section");
 
   // State
   let u = null; // uPlot instance
@@ -186,10 +183,13 @@
   // --------------------------------------------------------------------------
   // Data Fetching
   // --------------------------------------------------------------------------
-  function updateMeterTotalRow(latestReading) {
+  function fmtCost(kwh) {
+    return Fmt.n(kwh != null ? kwh * costPerKwh : null, 2);
+  }
+
+  function updateMeterTotal(latestReading) {
     if (!statMeterTotal) return;
-    const kwh = latestReading?.energy_in_kwh;
-    statMeterTotal.textContent = kwh != null ? `${Fmt.n(kwh, 2)} kWh` : "–";
+    statMeterTotal.textContent = Fmt.n(latestReading?.energy_in_kwh, 2);
   }
 
   /**
@@ -202,10 +202,10 @@
 
     // Connection status is owned by the live-power poller — it runs every few seconds.
     fetchJson("/api/latest_reading")
-      .then(updateMeterTotalRow)
+      .then(updateMeterTotal)
       .catch((e) => {
         console.error("Latest reading fetch error:", e);
-        updateMeterTotalRow(null);
+        updateMeterTotal(null);
       });
 
     fetchJson(`/api/stats?start=${startMs}&end=${now}`)
@@ -218,7 +218,7 @@
       .catch((e) => {
         console.error("Stats fetch error:", e);
         setConnectionStatus(statusConn, false);
-        showErrorInitial();
+        updateStats(null, startMs, now);
       });
 
     fetchJson(`/api/energy_summary?start=${startMs}&end=${now}`)
@@ -318,33 +318,16 @@
   }
 
   function updateStats(stats, startMs, endMs) {
-    if (!stats) {
-      statEnergy.textContent = "–";
-      statCost.textContent = "–";
-      statTypicalEnergy.textContent = "–";
-      statTypicalCost.textContent = "–";
-      statAvg.textContent = "–";
-      statMax.textContent = "–";
-      statMin.textContent = "–";
-      statCount.textContent = "–";
-      statRange.textContent = "–";
-      return;
-    }
-
-    const energy = stats.energy_used_kwh;
-    statEnergy.textContent = Fmt.n(energy, 2);
-    statCost.textContent = Fmt.n(energy != null ? energy * costPerKwh : null, 2);
-
     const durationDays = (endMs - startMs) / (24 * 60 * 60 * 1000);
-    const typicalEnergy = avgDailyEnergyUsage != null ? avgDailyEnergyUsage * durationDays : null;
-    statTypicalEnergy.textContent = Fmt.n(typicalEnergy, 2);
-    statTypicalCost.textContent = Fmt.n(typicalEnergy != null ? typicalEnergy * costPerKwh : null, 2);
+    statRangeLabel.textContent = `${Math.round(durationDays)} days`;
 
-    statAvg.textContent = Fmt.n(stats.avg_power_watts, 0);
-    statMax.textContent = Fmt.n(stats.max_power_watts, 0);
-    statMin.textContent = Fmt.n(stats.min_power_watts, 0);
-    statCount.textContent = stats.count != null ? String(stats.count) : "–";
-    statRange.textContent = formatDuration(endMs - startMs);
+    const energy = stats?.energy_used_kwh ?? null;
+    const typicalEnergy = avgDailyEnergyUsage != null ? avgDailyEnergyUsage * durationDays : null;
+    statEnergy.textContent = Fmt.n(energy, 2);
+    statCost.textContent = fmtCost(energy);
+    renderDelta(statEnergyDelta, energy, typicalEnergy);
+    statTypicalEnergy.textContent = Fmt.n(typicalEnergy, 2);
+    statTypicalCost.textContent = fmtCost(typicalEnergy);
   }
 
   /**
@@ -357,66 +340,27 @@
       .filter(d => d.t >= startMs && d.t <= endMs)
       .sort((a, b) => b.t - a.t);
 
-    const avgMap = new Map(movingAvgData.map(d => [getDateKey(new Date(d.t)), d.kwh]));
+    // Every row is compared against one baseline: the 30d moving average as of the most recent day shown
+    const latestDay = filteredDaily[0];
+    const latestDayKey = latestDay ? getDateKey(new Date(latestDay.t)) : null;
+    const baseline = movingAvgData.find(d => getDateKey(new Date(d.t)) === latestDayKey)?.kwh ?? avgDailyEnergyUsage;
+    dailyBaselineKwh.textContent = Fmt.n(baseline, 1);
+    dailyBaselineCost.textContent = fmtCost(baseline);
 
-    // Baseline for the diff column: the 30d moving average of the most recent day shown
-    let baseline = avgDailyEnergyUsage;
-    if (filteredDaily.length > 0) {
-      baseline = avgMap.get(getDateKey(new Date(filteredDaily[0].t))) ?? avgDailyEnergyUsage;
-    }
-    const baselineCost = baseline != null ? baseline * costPerKwh : null;
-
-    if (dailyTableTitle) {
-      if (baseline != null) {
-        dailyTableTitle.textContent = `Daily breakdown (30d avg: ${Fmt.n(baseline, 1)} kWh, €${Fmt.n(baselineCost, 2)})`;
-      } else {
-        dailyTableTitle.textContent = "Daily breakdown";
-      }
-    }
-
-    // Build table rows - diff is compared against the 30d moving average
     const rows = filteredDaily.map(d => {
-      const date = new Date(d.t);
-      const diff = d.kwh != null && baseline != null ? d.kwh - baseline : null;
-      const diffCost = diff != null ? diff * costPerKwh : null;
-      const diffClass = diff != null ? (diff > 0 ? "text-over" : "text-under") : "";
-      const diffSign = diff != null ? (diff > 0 ? "+" : "−") : "";
-      const cost = d.kwh != null ? d.kwh * costPerKwh : null;
-
-      const dateStr = date.toLocaleDateString(undefined, { 
-        weekday: "short", 
-        month: "short", 
-        day: "numeric" 
-      });
-
-      const diffStr = diff != null 
-        ? `${diffSign}(${Fmt.n(Math.abs(diff), 1)} kWh, €${Fmt.n(Math.abs(diffCost), 2)})`
-        : "–";
-
+      const dateStr = new Date(d.t).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+      const delta = describeDelta(d.kwh, baseline);
       return `
         <tr>
           <td>${dateStr}</td>
-          <td class="text-daily-energy">${Fmt.n(d.kwh, 1)}</td>
-          <td>${Fmt.n(cost, 2)}</td>
-          <td class="${diffClass}">${diffStr}</td>
+          <td>${Fmt.n(d.kwh, 1)}</td>
+          <td>${fmtCost(d.kwh)}</td>
+          <td class="${delta ? delta.className : ""}">${delta ? delta.text : "–"}</td>
         </tr>
       `;
     });
 
     dailyTableBody.innerHTML = rows.join("");
-  }
-
-  function showErrorInitial() {
-    statEnergy.textContent = "–";
-    statCost.textContent = "–";
-    statTypicalEnergy.textContent = "–";
-    statTypicalCost.textContent = "–";
-    statAvg.textContent = "–";
-    statMax.textContent = "–";
-    statMin.textContent = "–";
-    statCount.textContent = "–";
-    statRange.textContent = "–";
-    updateMeterTotalRow(null);
   }
 
   // --------------------------------------------------------------------------
