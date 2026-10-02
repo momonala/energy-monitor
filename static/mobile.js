@@ -248,7 +248,7 @@
     const signal = chartAbortController.signal;
 
     if (chartContent) chartContent.classList.add("is-visible");
-    if (btnShowChart) { btnShowChart.textContent = "Hide chart"; btnShowChart.setAttribute("aria-expanded", "true"); }
+    setChartButtonExpanded(true);
     showLoading();
 
     try {
@@ -275,7 +275,7 @@
       }
       console.error("Chart fetch error:", e);
       setConnectionStatus(statusConn, false);
-      if (btnShowChart) { btnShowChart.textContent = "Show chart"; btnShowChart.setAttribute("aria-expanded", "false"); }
+      setChartButtonExpanded(false);
       if (chartContent) chartContent.classList.remove("is-visible");
       chartLoaded = false;
     } finally {
@@ -284,12 +284,20 @@
     }
   }
 
+  function setChartButtonExpanded(expanded) {
+    if (!btnShowChart) return;
+    const label = expanded ? "Hide chart" : "Show chart";
+    btnShowChart.setAttribute("aria-expanded", String(expanded));
+    btnShowChart.setAttribute("aria-label", label);
+    btnShowChart.title = label;
+  }
+
   function hideChart() {
     if (chartAbortController) {
       chartAbortController.abort();
       chartAbortController = null;
     }
-    if (btnShowChart) { btnShowChart.textContent = "Show chart"; btnShowChart.setAttribute("aria-expanded", "false"); }
+    setChartButtonExpanded(false);
     if (chartContent) chartContent.classList.remove("is-visible");
     chartLoaded = false;
     if (u) {

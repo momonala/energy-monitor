@@ -140,7 +140,6 @@
 }
 
 .chart-tip__title {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--label-secondary);
   margin-bottom: 4px;
@@ -160,12 +159,11 @@
 .chart-tip__value {
   margin-left: auto;
   padding-left: 14px;
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--label);
 }
 
-/* Cursor readout box (compare page) — compact aligned rows, mono values */
+/* Cursor readout box (compare page) — compact aligned rows, tabular values */
 .hover-overlay {
   position: absolute;
   top: var(--space-sm);
@@ -196,7 +194,7 @@
 }
 
 .hover-row-new > span:last-child {
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
@@ -279,7 +277,6 @@
 
 .compare-period-field-range {
   font-size: var(--text-body);
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--label);
 }
@@ -548,11 +545,6 @@
   margin-top: var(--space-sm);
 }
 
-/* Every column is a fixed-width readout here, the date included. */
-.mobile-tile .data-table td:first-child {
-  font-family: var(--font-mono);
-}
-
 /* Range and chart disclosure are both "how do I want to look at this" — one bare
    row, no card chrome, so the fold isn't three stacked boxes before any data. */
 .mobile-controls {
@@ -565,6 +557,16 @@
   flex: 1;
   min-height: 44px;
   font-size: var(--text-subtitle);
+}
+
+.mobile-controls > .mobile-chart-btn {
+  flex: 0 0 44px;
+  padding: 0;
+}
+
+.mobile-chart-btn[aria-expanded="true"] {
+  background: var(--fill-active);
+  border-color: var(--label-tertiary);
 }
 
 .js-chart-content {

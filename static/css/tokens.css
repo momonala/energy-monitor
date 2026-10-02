@@ -44,13 +44,10 @@
   --page-gutter: clamp(1rem, 2.5vw, 2rem);
   --chart-axis-offset: 95px;
 
-  /* Typography.
-     Sans: system stack — the type load is functional labels at 11–13px; a
-     neutral workhorse, no webfont request for chrome.
-     Mono: Commit Mono (self-hosted) — tabular figures and a distinct voice for
-     every measurement: tile values, axis ticks, tooltips, table numbers. */
+  /* Typography — one family, the system stack (SF Pro / Segoe UI), no webfont
+     request. Measurements (tile values, tooltips, table numbers) set
+     font-variant-numeric: tabular-nums so digits line up in columns. */
   --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Commit Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --text-title: 20px;
   --text-stat: 26px;
   --text-subtitle: 15px;

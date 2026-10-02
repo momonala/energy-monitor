@@ -37,6 +37,21 @@ def test_index_serves_static_file(client):
     response.close()
 
 
+IPHONE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148"
+
+
+def test_index_redirects_mobile_until_desktop_chosen(client):
+    """A phone lands on /mobile; the desktop link sticks until /mobile is visited again."""
+    headers = {"User-Agent": IPHONE_UA}
+    assert client.get("/", headers=headers).status_code == 302
+
+    assert client.get("/?view=desktop", headers=headers).status_code == 200
+    assert client.get("/", headers=headers).status_code == 200
+
+    client.get("/mobile", headers=headers)
+    assert client.get("/", headers=headers).status_code == 302
+
+
 @pytest.mark.parametrize(
     "endpoint,expected_keys",
     [

@@ -4,9 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Energy Monitor{% endblock %}</title>
-  {# Parallel links, not an @import chain — imports load serially.
-     The font preload stays unversioned so it byte-matches the url() in base.css. #}
-  <link rel="preload" href="/static/fonts/commit-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+  {# Parallel links, not an @import chain — imports load serially. #}
   <link rel="stylesheet" href="{{ static_url('css/motion.css') }}" />
   <link rel="stylesheet" href="{{ static_url('css/tokens.css') }}" />
   <link rel="stylesheet" href="{{ static_url('css/base.css') }}" />

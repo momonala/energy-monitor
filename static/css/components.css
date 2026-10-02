@@ -194,7 +194,6 @@ body.sidebar-collapsed .sidebar-nav {
   display: inline-flex;
   align-items: baseline;
   gap: 3px;
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--text-subtitle);
   font-weight: 700;
@@ -301,7 +300,7 @@ select.btn {
   border-radius: var(--radius-sm);
   color: var(--label);
   font-size: var(--text-body);
-  font-family: var(--font-mono);
+  font-family: inherit;
   font-variant-numeric: tabular-nums;
   outline: none;
   appearance: none;
@@ -439,9 +438,9 @@ select.btn option {
 /* ── Cards & widgets ─────────────────────────────────── */
 
 .card {
-  background: var(--surface);
+  background: var(--bg);
   border: 1px solid var(--separator);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   padding: 12px 14px;
 }
 
@@ -503,7 +502,6 @@ select.btn option {
 }
 
 .widget-time {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--text-meta);
   color: var(--label-tertiary);
@@ -578,7 +576,6 @@ select.btn option {
 .swatch-meter { background: var(--series-energy); }
 
 .legend-value {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--label);
   min-width: 4.5em;
@@ -605,7 +602,6 @@ select.btn option {
   display: flex;
   align-items: baseline;
   gap: 4px;
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--text-stat);
   font-weight: 400;
@@ -621,7 +617,6 @@ select.btn option {
 .tile-sub {
   font-size: var(--text-body);
   color: var(--label-secondary);
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   display: flex;
   align-items: baseline;
@@ -725,7 +720,6 @@ select.btn option {
   font-weight: 600;
   color: var(--label);
   font-variant-numeric: tabular-nums;
-  font-family: var(--font-mono);
   line-height: 1.4;
 }
 
@@ -781,11 +775,7 @@ select.btn option {
 .data-table td {
   padding: 5px 8px;
   border-bottom: 1px solid var(--separator);
-  font-family: var(--font-mono);
-}
-
-.data-table td:first-child {
-  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
 }
 
 .data-table th:not(:first-child),
@@ -824,7 +814,7 @@ select.btn option {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--surface);
+  background: var(--bg);
   border-radius: var(--radius-sm);
   z-index: 10;
   color: var(--label-tertiary);

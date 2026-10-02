@@ -260,7 +260,7 @@
   ];
 
   function makeAxes(theme, unit) {
-    const font = `11px ${theme.fontMono}`;
+    const font = `11px ${theme.fontSans}`;
     return [
       {
         stroke: theme.axis,
@@ -434,7 +434,7 @@
       grid: { show: false },
       ticks: { stroke: theme.ticks },
       size: 52,
-      font: `11px ${theme.fontMono}`,
+      font: `11px ${theme.fontSans}`,
     });
     charts.power = buildChart(document.getElementById("chart-power"), {
       scales: {

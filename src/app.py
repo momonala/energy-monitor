@@ -9,6 +9,7 @@ from pathlib import Path
 
 from flask import Flask
 from flask import jsonify
+from flask import make_response
 from flask import redirect
 from flask import render_template
 from flask import request
@@ -127,6 +128,10 @@ def _spyglass_request_end(response):
 
 # Mobile user-agent patterns (exclude iPad - it should see desktop)
 MOBILE_PATTERNS = ["Mobile", "Android", "iPhone", "iPod", "BlackBerry", "Windows Phone"]
+# Set by the mobile page's "desktop" link so a phone can stay on the full dashboard;
+# visiting /mobile clears it.
+PREFER_DESKTOP_COOKIE = "prefer_desktop"
+PREFER_DESKTOP_MAX_AGE_S = 365 * 24 * 60 * 60
 MOVING_AVG_WINDOW_DAYS = 30
 
 
@@ -140,8 +145,12 @@ def is_mobile_user_agent() -> bool:
 
 @app.get("/")
 def index():
-    """Serve the frontend. Redirect mobile users to /mobile."""
-    if is_mobile_user_agent():
+    """Serve the frontend. Redirect mobile users to /mobile unless they opted into desktop."""
+    if request.args.get("view") == "desktop":
+        response = make_response(render_template("index.html"))
+        response.set_cookie(PREFER_DESKTOP_COOKIE, "1", max_age=PREFER_DESKTOP_MAX_AGE_S, samesite="Lax")
+        return response
+    if is_mobile_user_agent() and not request.cookies.get(PREFER_DESKTOP_COOKIE):
         return redirect("/mobile")
     return render_template("index.html")
 
@@ -149,7 +158,9 @@ def index():
 @app.get("/mobile")
 def mobile():
     """Serve the mobile-optimized frontend."""
-    return render_template("mobile.html")
+    response = make_response(render_template("mobile.html"))
+    response.delete_cookie(PREFER_DESKTOP_COOKIE)
+    return response
 
 
 @app.get("/compare")

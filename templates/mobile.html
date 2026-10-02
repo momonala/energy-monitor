@@ -43,7 +43,9 @@
     <option value="60">60 days</option>
     <option value="90">90 days</option>
   </select>
-  <button type="button" id="btn-show-chart" class="btn" aria-expanded="false" aria-controls="mobile-chart-content">Show chart</button>
+  <button type="button" id="btn-show-chart" class="btn mobile-chart-btn" aria-expanded="false" aria-controls="mobile-chart-content" aria-label="Show chart" title="Show chart">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 3 3 21 21 21"/><polyline points="7 15 11 10 14 13 20 6"/></svg>
+  </button>
 </div>
 
 <section id="mobile-chart-content" class="card js-chart-content">
@@ -94,7 +96,7 @@
 </section>
 
 <footer class="mobile-footer">
-  <a href="/" class="mobile-desktop-link">View desktop dashboard →</a>
+  <a href="/?view=desktop" class="mobile-desktop-link">View desktop dashboard →</a>
 </footer>
 {% endblock %}
 

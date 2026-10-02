@@ -29,7 +29,6 @@ function readChartTheme() {
     selectStroke: getCssVar("--series-select-stroke"),
     accent: getCssVar("--accent"),
     fontSans: getCssVar("--font-sans") || "system-ui, sans-serif",
-    fontMono: getCssVar("--font-mono") || "ui-monospace, monospace",
   };
 }
 
