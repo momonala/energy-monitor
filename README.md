@@ -105,8 +105,7 @@ energy-monitor/
 └── install/
     ├── install.sh                                # Raspberry Pi setup script
     ├── projects_energy-monitor.service           # systemd service for web app (includes APScheduler)
-    ├── projects_energy-monitor_mqtt.service      # systemd service for MQTT client
-    └── projects_energy-monitor_backup.{service,timer}  # daily DB backup
+    └── projects_energy-monitor_mqtt.service      # systemd service for MQTT client
 ```
 
 ## Architecture
@@ -277,10 +276,9 @@ payload copy was 63% of the database before it was dropped.
 | Path                            | Purpose                                             |
 | ------------------------------- | --------------------------------------------------- |
 | `data/energy.db`                | SQLite database with all readings                   |
-| `data/backups/energy-YYYYMMDD.db` | Daily WAL-safe backup (03:00, last 7 kept)        |
 
-Backups run via the `projects_energy-monitor_backup.timer` systemd timer, which calls
-`scripts/backup_db.sh` (`sqlite3 .backup` — safe against a live WAL database, unlike `cp`).
+`data/energy.db` is backed up nightly to Cloudflare R2, with 7 days of history, by
+`~/db-backup-services/cloudflare-r2-db-backup`.
 
 
 ## Background Jobs
