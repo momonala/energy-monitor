@@ -4,6 +4,7 @@ from datetime import datetime
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import text
 
 from src.database import get_daily_energy_usage
 from src.database import get_moving_avg_daily_usage
@@ -163,128 +164,52 @@ def test_get_stats_handles_empty_range(test_db):
         src.database.SessionLocal = original_session
 
 
-def test_save_energy_reading_accepts_bitshake_payload(test_db):
+def test_save_energy_readings_parses_bitshake_payload_and_skips_duplicates(test_db):
     """bitShake firmware uses ImportActive/ExportActive and power_L* field names."""
     import src.database
     from src.database import EnergyReading
-    from src.database import save_energy_reading
+    from src.database import parse_mt681
+    from src.database import save_energy_readings
 
+    fields = parse_mt681(
+        {
+            "ImportActive": 23755.579,
+            "ExportActive": 0.0,
+            "Power": 146,
+            "power_L1": 0,
+            "power_L2": 0,
+            "power_L3": 0,
+            "server_id": "0649534b010bcb2986eb",
+        }
+    )
     original_session = src.database.SessionLocal
     src.database.SessionLocal = test_db
-
     try:
-        save_energy_reading(
-            {
-                "MT681": {
-                    "ImportActive": 23755.579,
-                    "ExportActive": 0.0,
-                    "Power": 146,
-                    "power_L1": 0,
-                    "power_L2": 0,
-                    "power_L3": 0,
-                    "server_id": "0649534b010bcb2986eb",
-                }
-            }
-        )
-
-        session = test_db()
-        reading = session.query(EnergyReading).one()
-        session.close()
-
-        assert reading.meter_id == "0649534b010bcb2986eb"
-        assert reading.power_watts == pytest.approx(146.0)
-        assert reading.energy_in_kwh == pytest.approx(23755.579)
-        assert reading.energy_out_kwh is None
-        assert reading.power_phase_1_watts == pytest.approx(0.0)
+        save_energy_readings([{"timestamp_ms": 1000, **fields}, {"timestamp_ms": 2000, **fields}])
+        save_energy_readings([{"timestamp_ms": 2000, **fields}])
     finally:
         src.database.SessionLocal = original_session
-
-
-def test_latest_power_returns_newest_reading(test_db):
-    """latest_power returns the most recent row, flagged fresh."""
-    import src.database
-    from src.database import EnergyReading
-    from src.database import latest_power
 
     session = test_db()
-    fresh_ts = datetime.now(local_timezone())
-    session.add(
-        EnergyReading(
-            timestamp_ms=int((fresh_ts - timedelta(hours=1)).timestamp() * 1000),
-            meter_id="test_meter",
-            power_watts=999.0,
-            energy_in_kwh=1999.0,
-            energy_out_kwh=0.0,
-        )
-    )
-    session.add(
-        EnergyReading(
-            timestamp_ms=int(fresh_ts.timestamp() * 1000),
-            meter_id="test_meter",
-            power_watts=1234.5,
-            energy_in_kwh=2000.0,
-            energy_out_kwh=0.0,
-        )
-    )
-    session.commit()
+    readings = session.query(EnergyReading).order_by(EnergyReading.timestamp_ms).all()
     session.close()
 
-    original_session = src.database.SessionLocal
-    src.database.SessionLocal = test_db
-    try:
-        result = latest_power()
-    finally:
-        src.database.SessionLocal = original_session
-
-    assert result["w"] == pytest.approx(1234.5)
-    assert result["t"] == int(fresh_ts.timestamp() * 1000)
-    assert result["stale"] is False
-    assert result["age_s"] < 60
+    assert [r.timestamp_ms for r in readings] == [1000, 2000]
+    assert readings[0].meter_id == "0649534b010bcb2986eb"
+    assert readings[0].power_watts == pytest.approx(146.0)
+    assert readings[0].energy_in_kwh == pytest.approx(23755.579)
+    assert readings[0].energy_out_kwh is None
+    assert readings[0].power_phase_1_watts == pytest.approx(0.0)
 
 
-def test_latest_power_flags_stale_reading(test_db):
-    """A reading older than the staleness threshold is flagged."""
-    import src.database
-    from src.database import EnergyReading
-    from src.database import latest_power
-
+def test_readings_table_has_no_secondary_index(test_db):
+    """timestamp_ms must be the rowid; any other primary key type adds an index written per insert."""
     session = test_db()
-    session.add(
-        EnergyReading(
-            timestamp_ms=int((datetime.now(local_timezone()) - timedelta(minutes=10)).timestamp() * 1000),
-            meter_id="test_meter",
-            power_watts=300.0,
-            energy_in_kwh=1000.0,
-            energy_out_kwh=0.0,
-        )
-    )
-    session.commit()
+    indexes = session.execute(
+        text("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'energy_readings'")
+    ).fetchall()
     session.close()
-
-    original_session = src.database.SessionLocal
-    src.database.SessionLocal = test_db
-    try:
-        result = latest_power()
-    finally:
-        src.database.SessionLocal = original_session
-
-    assert result["stale"] is True
-    assert result["age_s"] > 60
-
-
-def test_latest_power_handles_empty_db(test_db):
-    """An empty database yields nulls rather than raising."""
-    import src.database
-    from src.database import latest_power
-
-    original_session = src.database.SessionLocal
-    src.database.SessionLocal = test_db
-    try:
-        result = latest_power()
-    finally:
-        src.database.SessionLocal = original_session
-
-    assert result == {"t": None, "w": None, "age_s": None, "stale": True}
+    assert indexes == []
 
 
 @pytest.mark.parametrize(

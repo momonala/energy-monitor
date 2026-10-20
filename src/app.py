@@ -24,6 +24,7 @@ from src.config import SERVER_URL
 from src.config import SPYGLASS_DASHBOARD_URL
 from src.config import TASMOTA_UI_URL
 from src.config import TOPIC
+from src.database import DEFAULT_LOOKBACK_WEEKS
 from src.database import DEFAULT_READINGS_BUCKET_MS
 from src.database import MAX_READINGS_BUCKET_MS
 from src.database import get_daily_energy_usage
@@ -32,14 +33,18 @@ from src.database import get_moving_avg_daily_usage
 from src.database import get_readings
 from src.database import get_stats
 from src.database import latest_energy_reading
-from src.database import latest_power
 from src.database import check_ingestion_stall
 from src.database import log_db_health_check
 from src.database import num_energy_readings_last_hour
 from src.database import num_total_energy_readings
 from src.database import time_since_last_reading
+from src.database import to_ms
 from src.helpers import local_timezone
 from src.helpers import parse_time_param
+from src.live import append_unsaved_readings
+from src.live import latest_power
+from src.live import start_live_feed
+from src.live import time_since_last_received
 from src.observability import get_logger
 from src.observability import metrics
 
@@ -89,10 +94,16 @@ def _scheduled_db_health_check() -> None:
     log_db_health_check()
 
 
+def _time_since_last_reading() -> timedelta | None:
+    """Reading age from the live feed, or from the DB until the feed has seen one since startup."""
+    since_received = time_since_last_received()
+    return since_received if since_received is not None else time_since_last_reading()
+
+
 @scheduler.task("cron", id="ingestion_watch", minute="*")
 def _scheduled_ingestion_watch() -> None:
     """Watch for ingestion stalls every minute. The only source of stall alerts."""
-    check_ingestion_stall(INGESTION_WATCH_INTERVAL)
+    check_ingestion_stall(_time_since_last_reading(), INGESTION_WATCH_INTERVAL)
 
 
 _NAV_ACTIVE_BY_ENDPOINT = {
@@ -182,8 +193,11 @@ def api_readings():
     if bucket_ms is None:
         bucket_ms = DEFAULT_READINGS_BUCKET_MS
     bucket_ms = max(0, min(bucket_ms, MAX_READINGS_BUCKET_MS))
-    data = get_readings(start=start, end=end, bucket_ms=bucket_ms)
-    return jsonify(data)
+    now = datetime.now(local_timezone())
+    end = end or now
+    start = start or now - timedelta(weeks=DEFAULT_LOOKBACK_WEEKS)
+    rows = get_readings(start=start, end=end, bucket_ms=bucket_ms)
+    return jsonify(append_unsaved_readings(rows, to_ms(start), to_ms(end), bucket_ms))
 
 
 def _filter_daily_by_ms(daily_data: list[dict], start_ms: int, end_ms: int) -> list[dict]:
@@ -268,9 +282,9 @@ def status():
     """Return service status information.
 
     The MQTT client runs as a separate systemd service, so this process cannot inspect
-    its socket. Ingestion health is inferred from how recently a reading landed in the DB.
+    its socket. Ingestion health is inferred from how recently this process saw a reading.
     """
-    since_last_reading = time_since_last_reading()
+    since_last_reading = _time_since_last_reading()
     return {
         "status": "ok",
         "receiving_readings": since_last_reading is not None and since_last_reading < READING_STALE_AFTER,
@@ -296,6 +310,7 @@ def observability():
 def main():
     logger.info(f"Starting Flask server on http://0.0.0.0:{FLASK_PORT}")
     logger.info(f"Status: {json.dumps(status(), indent=2)}")
+    start_live_feed()
     scheduler.start()
     logger.info("Started APScheduler: hourly DB health check, per-minute ingestion watch")
     app.run(host="0.0.0.0", port=FLASK_PORT, debug=False)

@@ -47,3 +47,17 @@ def test_offline_does_not_alert():
     with patch("src.mqtt.send_alert") as mock_alert:
         handle_lwt_status("Offline")
     mock_alert.assert_not_called()
+
+
+def test_db_worker_batches_until_flush_interval_and_flushes_on_stop():
+    """Readings are committed together once per interval, and nothing is lost on shutdown."""
+    import src.mqtt
+
+    clock = iter([0.0, 0.0, 1.0, 1.0, 2.0, 400.0, 400.0, 401.0, 401.0])
+    saved = []
+    for row in ({"timestamp_ms": 1}, {"timestamp_ms": 2}, {"timestamp_ms": 3}, None):
+        src.mqtt.db_queue.put(row)
+    with patch("src.mqtt.time.monotonic", side_effect=lambda: next(clock)):
+        with patch("src.mqtt.save_energy_readings", side_effect=lambda rows: saved.append(list(rows))):
+            src.mqtt.db_worker()
+    assert saved == [[{"timestamp_ms": 1}, {"timestamp_ms": 2}, {"timestamp_ms": 3}]]

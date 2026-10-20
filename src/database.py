@@ -3,15 +3,15 @@ import time
 from datetime import datetime
 from datetime import timedelta
 
-import sqlalchemy
-from sqlalchemy import BigInteger
 from sqlalchemy import Column
 from sqlalchemy import Float
+from sqlalchemy import Integer
 from sqlalchemy import String
 from sqlalchemy import create_engine
 from sqlalchemy import event
 from sqlalchemy import func
 from sqlalchemy import text
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -33,7 +33,7 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _to_ms(dt: datetime) -> int:
+def to_ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
@@ -43,9 +43,6 @@ class NegativeEnergyError(ValueError):
 
 DEFAULT_LOOKBACK_WEEKS = 52
 YEARLY_AVG_DAYS = 365
-
-# Readings arrive roughly every 10s; a minute without one means the feed is broken, not slow.
-LIVE_POWER_STALE_SECONDS = 60
 
 engine = create_engine(
     DATABASE_URL,
@@ -76,8 +73,9 @@ Base = declarative_base()
 class EnergyReading(Base):
     __tablename__ = "energy_readings"
 
-    # UTC milliseconds since epoch
-    timestamp_ms = Column(BigInteger, default=_now_ms, nullable=False, primary_key=True)
+    # UTC milliseconds since epoch. Must stay `Integer`: only INTEGER PRIMARY KEY is SQLite's rowid;
+    # any other type adds a second index written on every insert.
+    timestamp_ms = Column(Integer, default=_now_ms, nullable=False, primary_key=True)
     meter_id = Column(String(255), nullable=True)
     power_watts = Column(Float, nullable=True)
     energy_in_kwh = Column(Float, nullable=True)
@@ -125,7 +123,7 @@ def _first_present(payload: dict, *keys: str):
     return None
 
 
-def _normalize_mt681_payload(mt_payload: dict) -> dict:
+def parse_mt681(mt_payload: dict) -> dict:
     """Map MT681 fields from Tasmota payloads (supports multiple firmware variants)."""
     meter_id = _first_present(mt_payload, "Meter_id", "server_id")
     return {
@@ -147,7 +145,7 @@ def _normalize_mt681_payload(mt_payload: dict) -> dict:
 
 def format_mt681_summary(mt_payload: dict) -> str:
     """Format normalized MT681 fields for logging."""
-    fields = _normalize_mt681_payload(mt_payload)
+    fields = parse_mt681(mt_payload)
     return (
         f"meter_id={fields['meter_id']} "
         f"power={fields['power_watts']}W "
@@ -156,40 +154,18 @@ def format_mt681_summary(mt_payload: dict) -> str:
     )
 
 
-def save_energy_reading(tasmota_payload: dict):
-    """Persist a single MT681 energy reading payload."""
-    mt_payload = tasmota_payload["MT681"]
-    fields = _normalize_mt681_payload(mt_payload)
-    timestamp_ms = _now_ms()
-    reading = EnergyReading(
-        meter_id=fields["meter_id"],
-        power_watts=fields["power_watts"],
-        energy_in_kwh=fields["energy_in_kwh"],
-        energy_out_kwh=fields["energy_out_kwh"],
-        power_phase_1_watts=fields["power_phase_1_watts"],
-        power_phase_2_watts=fields["power_phase_2_watts"],
-        power_phase_3_watts=fields["power_phase_3_watts"],
-        timestamp_ms=timestamp_ms,
-    )
-
-    try:
-        with metrics.timed("db.save_reading"):
-            with SessionLocal() as session:
-                session.add(reading)
-                session.commit()
-                session.refresh(reading)
-        metrics.increment("db.readings.saved")
-        logger.debug(
-            "Saved energy reading: meter_id=%s power=%sW E_in=%s E_out=%s timestamp_ms=%s",
-            reading.meter_id,
-            reading.power_watts,
-            reading.energy_in_kwh,
-            reading.energy_out_kwh,
-            timestamp_ms,
-        )
-    except sqlalchemy.exc.IntegrityError:
-        metrics.increment("db.readings.duplicate")
-        logger.warning(f"Reading already exists for {timestamp_ms=}")
+def save_energy_readings(rows: list[dict]) -> None:
+    """Insert parsed readings in one transaction, skipping any whose timestamp already exists."""
+    with metrics.timed("db.save_readings"):
+        with SessionLocal() as session:
+            result = session.connection().execute(insert(EnergyReading).on_conflict_do_nothing(), rows)
+            session.commit()
+    metrics.increment("db.readings.saved", result.rowcount)
+    duplicates = len(rows) - result.rowcount
+    if duplicates:
+        metrics.increment("db.readings.duplicate", duplicates)
+        logger.warning("Skipped %d readings with an existing timestamp", duplicates)
+    logger.debug("Saved %d readings", result.rowcount)
 
 
 def latest_energy_reading() -> dict | None:
@@ -204,31 +180,6 @@ def latest_energy_reading() -> dict | None:
             fields["timestamp_ms"] / 1000, tz=local_timezone()
         ).isoformat()
         return fields
-
-
-def latest_power() -> dict:
-    """
-    Get the most recent instantaneous power draw, for the live readout.
-
-    Selects only the two needed columns since this is polled every few seconds. Returns
-    nulls rather than raising on an empty DB so the client has a single code path.
-    """
-    with SessionLocal() as session:
-        row = (
-            session.query(EnergyReading.timestamp_ms, EnergyReading.power_watts)
-            .order_by(EnergyReading.timestamp_ms.desc())
-            .first()
-        )
-    if row is None:
-        return {"t": None, "w": None, "age_s": None, "stale": True}
-
-    age_s = (_now_ms() - row.timestamp_ms) / 1000
-    return {
-        "t": row.timestamp_ms,
-        "w": row.power_watts,
-        "age_s": round(age_s, 1),
-        "stale": age_s > LIVE_POWER_STALE_SECONDS,
-    }
 
 
 def get_monthly_avg_daily_usage() -> float:
@@ -315,13 +266,12 @@ def stall_alert_due(gap: timedelta, tick: timedelta) -> bool:
     return any(previous_minutes < threshold <= now_minutes for threshold in thresholds)
 
 
-def check_ingestion_stall(tick: timedelta) -> None:
-    """Sole owner of stall alerting: detect silence, diagnose it, and escalate on a schedule.
+def check_ingestion_stall(gap: timedelta | None, tick: timedelta) -> None:
+    """Sole owner of stall alerting: given the time since the last reading, diagnose and escalate.
 
     `tick` is how often the caller runs this, and defines the window a threshold crossing is
     detected in. Diagnosis probes the network, so it only runs on a crossing, never per tick.
     """
-    gap = time_since_last_reading()
     if gap is None:
         return
     metrics.gauge("db.ingestion.gap_seconds", gap.total_seconds())
@@ -350,19 +300,15 @@ RAW_READING_INTERVAL_MS = 10_000  # sensor TelePeriod; buckets at or below this 
 MAX_READINGS_BUCKET_MS = MS_PER_DAY
 
 
-def get_readings(
-    start: datetime | None = None,
-    end: datetime | None = None,
-    bucket_ms: int = DEFAULT_READINGS_BUCKET_MS,
-) -> list[dict]:
+def get_readings(start: datetime, end: datetime, bucket_ms: int) -> list[dict]:
     """
-    Fetch readings, optionally filtered by time range, downsampled in SQL to
-    bucket_ms buckets (max per bucket) so full raw rows never materialize for
-    large ranges. A bucket_ms at or below the raw ~10s cadence returns raw rows.
+    Fetch readings in [start, end], downsampled in SQL to bucket_ms buckets (max per
+    bucket) so full raw rows never materialize for large ranges. A bucket_ms at or
+    below the raw ~10s cadence returns raw rows.
     Returns a list of dicts with timestamp (ms since epoch), power_watts, and energy_in_kwh.
     """
-    start_ms = _to_ms(start) if start is not None else _now_ms() - DEFAULT_LOOKBACK_WEEKS * 7 * MS_PER_DAY
-    end_ms = _to_ms(end) if end is not None else _now_ms()
+    start_ms = to_ms(start)
+    end_ms = to_ms(end)
     time_filter = (
         EnergyReading.timestamp_ms >= start_ms,
         EnergyReading.timestamp_ms <= end_ms,
@@ -412,8 +358,8 @@ def get_daily_energy_usage(
     Partial days are those with less than 23 hours of coverage.
     """
     tz = local_timezone()
-    start_ms = _to_ms(start) if start is not None else _now_ms() - DEFAULT_LOOKBACK_WEEKS * 7 * MS_PER_DAY
-    end_ms = _to_ms(end) if end is not None else _now_ms()
+    start_ms = to_ms(start) if start is not None else _now_ms() - DEFAULT_LOOKBACK_WEEKS * 7 * MS_PER_DAY
+    end_ms = to_ms(end) if end is not None else _now_ms()
 
     sql = text("""
     WITH filtered AS (
@@ -456,7 +402,7 @@ def get_daily_energy_usage(
         is_partial = hours_covered < 23
 
         local_noon = datetime.strptime(d_str, "%Y-%m-%d").replace(hour=12, tzinfo=tz)
-        result.append({"t": _to_ms(local_noon), "kwh": float(daily_kwh), "is_partial": is_partial})
+        result.append({"t": to_ms(local_noon), "kwh": float(daily_kwh), "is_partial": is_partial})
 
     return result
 
@@ -486,8 +432,8 @@ def get_stats(start: datetime, end: datetime) -> dict:
       - min_power_watts, max_power_watts, avg_power_watts
       - count
     """
-    start_ms = _to_ms(start)
-    end_ms = _to_ms(end)
+    start_ms = to_ms(start)
+    end_ms = to_ms(end)
     with metrics.timed("db.get_stats"):
         with SessionLocal() as session:
             first_row = (

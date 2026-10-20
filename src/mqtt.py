@@ -2,9 +2,11 @@
 
 import json
 import queue
+import signal
 import sys
 import threading
 import time
+from datetime import timedelta
 
 import paho.mqtt.client as mqtt
 
@@ -15,7 +17,8 @@ from src.config import SERVER_URL
 from src.config import TOPIC
 from src.database import format_mt681_summary
 from src.database import init_db
-from src.database import save_energy_reading
+from src.database import parse_mt681
+from src.database import save_energy_readings
 from src.database import time_since_last_reading
 from src.observability import get_logger
 from src.observability import metrics
@@ -25,6 +28,8 @@ logger = get_logger(__name__)
 db_queue = queue.Queue()
 
 _last_sensor_time: float | None = None
+_last_reading_ms: int | None = None
+FLUSH_INTERVAL_SECONDS = 300
 
 LWT_TOPIC = "tele/tasmota/LWT"
 SENSOR_TOPIC = "tele/tasmota/SENSOR"
@@ -55,7 +60,7 @@ def handle_lwt_status(payload: str) -> None:
         return
     if payload == "Online":
         metrics.increment("mqtt.device.online")
-        downtime = time_since_last_reading()
+        downtime = time_since_last_received()
         if downtime is None:
             send_alert("Hardware device came *online*")
             return
@@ -65,19 +70,43 @@ def handle_lwt_status(payload: str) -> None:
         send_alert(f"Hardware device came *online* — down for `{format_downtime(downtime_s)}`")
 
 
+def time_since_last_received() -> timedelta | None:
+    """Time since this process last received a reading, falling back to the DB after a restart."""
+    if _last_reading_ms is None:
+        return time_since_last_reading()
+    return timedelta(milliseconds=time.time() * 1000 - _last_reading_ms)
+
+
+def _flush(rows: list[dict]) -> None:
+    """Save and clear the buffered rows, keeping them for the next flush if the save fails."""
+    if not rows:
+        return
+    try:
+        save_energy_readings(rows)
+    except Exception:
+        metrics.increment("mqtt.db_save.errors")
+        logger.exception("Failed to save %d readings, retrying next flush", len(rows))
+        return
+    rows.clear()
+
+
 def db_worker():
-    """Single thread consuming DB writes."""
+    """Single thread consuming readings, committing them in one batch per flush interval."""
+    rows: list[dict] = []
+    next_flush = time.monotonic() + FLUSH_INTERVAL_SECONDS
     while True:
-        payload = db_queue.get()
-        if payload is None:  # sentinel to stop
-            break
         try:
-            save_energy_reading(tasmota_payload=payload)
-        except Exception:
-            metrics.increment("mqtt.db_save.errors")
-            logger.exception("Failed to save reading")
-        finally:
-            db_queue.task_done()
+            row = db_queue.get(timeout=max(0.0, next_flush - time.monotonic()))
+        except queue.Empty:
+            row = None
+        else:
+            if row is None:  # sentinel to stop
+                _flush(rows)
+                return
+            rows.append(row)
+        if time.monotonic() >= next_flush:
+            _flush(rows)
+            next_flush = time.monotonic() + FLUSH_INTERVAL_SECONDS
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
@@ -91,7 +120,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
 
 def on_message(client, userdata, msg):
     """Callback for when the MQTT client receives a message."""
-    global _last_sensor_time
+    global _last_sensor_time, _last_reading_ms
     try:
         payload = msg.payload.decode()
         # LWT is a plain-text status ("Online"/"Offline"), not JSON
@@ -112,14 +141,14 @@ def on_message(client, userdata, msg):
             metrics.timing("mqtt.sensor.interval_ms", (now - _last_sensor_time) * 1000)
         _last_sensor_time = now
         mt_payload = data.get("MT681")
-        if isinstance(mt_payload, dict):
-            summary = format_mt681_summary(mt_payload)
-        else:
-            summary = f"payload_keys={list(data.keys())}"
-        logger.debug("[mqtt] received SENSOR: %s", summary)
+        if not isinstance(mt_payload, dict):
+            logger.warning("[mqtt] SENSOR without MT681: payload_keys=%s", list(data.keys()))
+            return
+        logger.debug("[mqtt] received SENSOR: %s", format_mt681_summary(mt_payload))
         metrics.increment("mqtt.messages.mqtt_reading")
         metrics.gauge("mqtt.db_queue.depth", db_queue.qsize())
-        db_queue.put(data)
+        _last_reading_ms = int(time.time() * 1000)
+        db_queue.put({"timestamp_ms": _last_reading_ms, **parse_mt681(mt_payload)})
     elif msg.topic == STATE_TOPIC:
         logger.debug("[msg] %s: %s", msg.topic, data)
     elif msg.topic == INFO3_TOPIC:
@@ -160,9 +189,11 @@ if __name__ == "__main__":
     client.connect(SERVER_URL, MQTT_PORT, keepalive=60)
     logger.info("MQTT client connected, starting message loop")
 
+    signal.signal(signal.SIGTERM, lambda signum, frame: client.disconnect())
     try:
         client.loop_forever()
     except KeyboardInterrupt:
-        logger.info("Shutting down MQTT client")
         client.disconnect()
-        db_queue.put(None)  # Signal worker to stop
+    logger.info("Shutting down MQTT client, flushing buffered readings")
+    db_queue.put(None)
+    worker_thread.join()

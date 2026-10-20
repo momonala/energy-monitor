@@ -82,21 +82,18 @@ def test_check_ingestion_stall_only_probes_on_a_threshold_crossing():
     tick = timedelta(minutes=1)
     with patch("src.database.classify_stall", return_value="diagnosis") as mock_classify:
         with patch("src.database.send_alert") as mock_alert:
-            with patch("src.database.time_since_last_reading", return_value=timedelta(minutes=3)):
-                check_ingestion_stall(tick)  # between thresholds
+            check_ingestion_stall(timedelta(minutes=3), tick)  # between thresholds
             mock_classify.assert_not_called()
             mock_alert.assert_not_called()
 
-            with patch("src.database.time_since_last_reading", return_value=timedelta(minutes=15)):
-                check_ingestion_stall(tick)  # on a threshold
+            check_ingestion_stall(timedelta(minutes=15), tick)  # on a threshold
             mock_classify.assert_called_once()
             assert "diagnosis" in mock_alert.call_args[0][0]
 
 
-def test_check_ingestion_stall_is_quiet_on_an_empty_database():
+def test_check_ingestion_stall_is_quiet_without_any_reading():
     from src.database import check_ingestion_stall
 
-    with patch("src.database.time_since_last_reading", return_value=None):
-        with patch("src.database.send_alert") as mock_alert:
-            check_ingestion_stall(timedelta(minutes=1))
+    with patch("src.database.send_alert") as mock_alert:
+        check_ingestion_stall(None, timedelta(minutes=1))
     mock_alert.assert_not_called()
