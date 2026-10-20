@@ -120,7 +120,8 @@ flowchart LR
     end
     subgraph Services
         Broker --> MQTT[MQTT Service]
-        MQTT --> DB[(SQLite)]
+        Broker -->|live feed| Flask
+        MQTT -->|batch every 5 min| DB[(SQLite)]
         Flask[Flask :5008] --> DB
         Flask --> UI[Web Dashboard]
         Flask --> Scheduler[APScheduler]
@@ -130,12 +131,16 @@ flowchart LR
 
 **Data flow:** Meter → IR → Tasmota → MQTT Broker → MQTT Service → SQLite → Flask REST API → Browser
 
-**Quirk — the two services share nothing but the DB.** `src/app.py` and `src/mqtt.py` run as
-separate systemd units, so a module-level global set in one is always `None` in the other. Anything
-Flask needs to know about ingestion must be derived from SQLite: `/status` reports
-`receiving_readings` from the age of the newest row, and `handle_lwt_status` computes outage
-duration the same way so it survives a restart mid-outage. Don't reintroduce a shared-client global —
-it reads as working and is silently always false.
+**Quirk — SQLite lags the meter by up to 5 minutes.** `src/mqtt.py` buffers readings and commits one
+batch every `FLUSH_INTERVAL_SECONDS` (and on SIGTERM), which keeps SD card writes low. A crash or power
+cut loses at most that window. So Flask doesn't read live state from the DB: `src/live.py` subscribes
+to the meter itself and keeps recent readings in memory for the live readout, `/status`, stall alerts,
+and the newest points of `/api/readings`. Both processes fall back to the DB until they've seen a
+reading since startup.
+
+**Quirk — the two services share no memory.** `src/app.py` and `src/mqtt.py` run as separate systemd
+units, so a module-level global set in one is always `None` in the other. Don't reintroduce a
+shared-client global; it reads as working and is silently always false.
 
 ## API Endpoints
 
@@ -175,8 +180,8 @@ Response:
 
 ### `/api/live_power`
 
-No query params. Deliberately slim — it is polled every 5s by every open dashboard, so it selects only
-`(timestamp_ms, power_watts)` instead of hydrating the full row. Never cached.
+No query params. Polled every 5s by every open dashboard, so it is served from the in-memory live feed
+(`src/live.py`), never the DB. Never cached.
 
 ```json
 {"t": 1701432000000, "w": 512.3, "age_s": 4.2, "stale": false}
@@ -187,7 +192,7 @@ No query params. Deliberately slim — it is polled every 5s by every open dashb
 - `age_s`: seconds since the reading landed
 - `stale`: `age_s > 60` — readings normally arrive every ~10s, so a minute of silence means the feed is broken
 
-An empty database returns `200` with `t`/`w`/`age_s` null and `stale: true`, so the client has one code path.
+Before the first reading since startup it returns `200` with `t`/`w`/`age_s` null and `stale: true`, so the client has one code path.
 
 ### `/api/energy_summary`
 

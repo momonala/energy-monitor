@@ -23,7 +23,7 @@ def test_format_downtime(seconds, expected):
 
 
 def test_online_reports_downtime_from_last_reading():
-    """Downtime comes from the DB, so it survives a restart of this service mid-outage."""
+    """After a restart, downtime comes from the DB, so it survives a restart mid-outage."""
     with patch("src.mqtt.time_since_last_reading", return_value=timedelta(days=7, hours=1)):
         with patch("src.mqtt.send_alert") as mock_alert:
             handle_lwt_status("Online")
@@ -49,15 +49,26 @@ def test_offline_does_not_alert():
     mock_alert.assert_not_called()
 
 
-def test_db_worker_batches_until_flush_interval_and_flushes_on_stop():
-    """Readings are committed together once per interval, and nothing is lost on shutdown."""
+@pytest.mark.parametrize(
+    "flush_interval_s,expected_batches",
+    [
+        (3600, [[1, 2, 3]]),
+        (0, [[1], [2], [3]]),
+    ],
+)
+def test_db_worker_batches_per_flush_interval_and_flushes_on_stop(
+    monkeypatch, flush_interval_s, expected_batches
+):
+    """Rows are committed together once per interval, and nothing buffered is lost on shutdown."""
     import src.mqtt
 
-    clock = iter([0.0, 0.0, 1.0, 1.0, 2.0, 400.0, 400.0, 401.0, 401.0])
+    monkeypatch.setattr(src.mqtt, "FLUSH_INTERVAL_SECONDS", flush_interval_s)
     saved = []
     for row in ({"timestamp_ms": 1}, {"timestamp_ms": 2}, {"timestamp_ms": 3}, None):
         src.mqtt.db_queue.put(row)
-    with patch("src.mqtt.time.monotonic", side_effect=lambda: next(clock)):
-        with patch("src.mqtt.save_energy_readings", side_effect=lambda rows: saved.append(list(rows))):
-            src.mqtt.db_worker()
-    assert saved == [[{"timestamp_ms": 1}, {"timestamp_ms": 2}, {"timestamp_ms": 3}]]
+    with patch(
+        "src.mqtt.save_energy_readings",
+        side_effect=lambda rows: saved.append([r["timestamp_ms"] for r in rows]),
+    ):
+        src.mqtt.db_worker()
+    assert saved == expected_batches

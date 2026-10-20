@@ -49,8 +49,8 @@ def format_downtime(seconds: float) -> str:
 def handle_lwt_status(payload: str) -> None:
     """Record device offline/online transitions and alert the all-clear on recovery.
 
-    Downtime is measured as the gap since the last stored reading rather than tracked in
-    memory, so a restart of this service mid-outage does not reset the clock.
+    Downtime is the gap since the last received reading, read from the DB after a restart so
+    a restart of this service mid-outage does not reset the clock.
     """
     if payload == "Offline":
         # No alert here: check_ingestion_stall owns outage alerting, and it diagnoses the
@@ -60,7 +60,7 @@ def handle_lwt_status(payload: str) -> None:
         return
     if payload == "Online":
         metrics.increment("mqtt.device.online")
-        downtime = time_since_last_received()
+        downtime = _time_since_last_reading()
         if downtime is None:
             send_alert("Hardware device came *online*")
             return
@@ -70,7 +70,7 @@ def handle_lwt_status(payload: str) -> None:
         send_alert(f"Hardware device came *online* — down for `{format_downtime(downtime_s)}`")
 
 
-def time_since_last_received() -> timedelta | None:
+def _time_since_last_reading() -> timedelta | None:
     """Time since this process last received a reading, falling back to the DB after a restart."""
     if _last_reading_ms is None:
         return time_since_last_reading()

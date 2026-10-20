@@ -111,10 +111,11 @@ def _on_connect(client, userdata, flags, reason_code, properties):
 
 
 def _on_message(client, userdata, msg):
+    # paho re-raises callback exceptions, which ends the loop thread and freezes the feed for good.
     try:
         record_sensor_payload(json.loads(msg.payload))
-    except json.JSONDecodeError:
-        logger.warning("[live] undecodable SENSOR payload: %r", msg.payload)
+    except Exception:
+        logger.exception("[live] unusable SENSOR payload: %r", msg.payload)
 
 
 def start_live_feed() -> None:
