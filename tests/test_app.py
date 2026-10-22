@@ -61,17 +61,19 @@ def test_index_redirects_mobile_until_desktop_chosen(client):
 )
 def test_api_endpoints_return_json(client, endpoint, expected_keys):
     """API endpoints return valid JSON."""
-    with patch("src.app.latest_energy_reading", return_value={"timestamp": "2024-01-01T00:00:00"}):
-        with patch("src.app.time_since_last_reading", return_value=timedelta(seconds=5)):
-            with patch("src.app.num_energy_readings_last_hour", return_value=100):
-                with patch("src.app.num_total_energy_readings", return_value=1000):
-                    response = client.get(endpoint)
-                    assert response.status_code == 200
-                    data = response.get_json()
-                    assert isinstance(data, dict)
-                    if expected_keys:
-                        for key in expected_keys:
-                            assert key in data
+    with (
+        patch("src.app.latest_energy_reading", return_value={"timestamp": "2024-01-01T00:00:00"}),
+        patch("src.app.time_since_last_reading", return_value=timedelta(seconds=5)),
+        patch("src.app.num_energy_readings_last_hour", return_value=100),
+        patch("src.app.num_total_energy_readings", return_value=1000),
+    ):
+        response = client.get(endpoint)
+        assert response.status_code == 200
+        data = response.get_json()
+        assert isinstance(data, dict)
+        if expected_keys:
+            for key in expected_keys:
+                assert key in data
 
 
 @pytest.mark.parametrize(
@@ -84,12 +86,14 @@ def test_api_endpoints_return_json(client, endpoint, expected_keys):
 )
 def test_status_reports_ingestion_health_from_reading_age(client, since_last, expected):
     """`receiving_readings` tracks reading recency, not an unreachable cross-process client."""
-    with patch("src.app.latest_energy_reading", return_value=None):
-        with patch("src.app.time_since_last_reading", return_value=since_last):
-            with patch("src.app.num_energy_readings_last_hour", return_value=0):
-                with patch("src.app.num_total_energy_readings", return_value=0):
-                    data = client.get("/status").get_json()
-                    assert data["receiving_readings"] is expected
+    with (
+        patch("src.app.latest_energy_reading", return_value=None),
+        patch("src.app.time_since_last_reading", return_value=since_last),
+        patch("src.app.num_energy_readings_last_hour", return_value=0),
+        patch("src.app.num_total_energy_readings", return_value=0),
+    ):
+        data = client.get("/status").get_json()
+        assert data["receiving_readings"] is expected
 
 
 def test_api_readings_accepts_time_params(client):
@@ -102,28 +106,30 @@ def test_api_readings_accepts_time_params(client):
 
 def test_api_energy_summary_accepts_time_params(client):
     """Energy summary endpoint accepts start/end parameters."""
-    with patch("src.app.get_monthly_avg_daily_usage", return_value=5.0):
-        with patch("src.app.get_daily_energy_usage", return_value=[]):
-            with patch("src.app.get_moving_avg_daily_usage", return_value=[]):
-                response = client.get("/api/energy_summary?start=1704067200000&end=1704153600000")
-                assert response.status_code == 200
-                data = response.get_json()
-                assert data["avg_daily"] == 5.0
-                assert data["daily"] == []
-                assert data["moving_avg_30d"] == []
+    with (
+        patch("src.app.get_monthly_avg_daily_usage", return_value=5.0),
+        patch("src.app.get_daily_energy_usage", return_value=[]),
+        patch("src.app.get_moving_avg_daily_usage", return_value=[]),
+    ):
+        response = client.get("/api/energy_summary?start=1704067200000&end=1704153600000")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["avg_daily"] == 5.0
+        assert data["daily"] == []
+        assert data["moving_avg_30d"] == []
 
 
 def test_api_energy_summary_without_params_uses_full_history(client):
     """Energy summary without params keeps full-history behavior for compare page."""
-    with patch("src.app.get_monthly_avg_daily_usage", return_value=5.0):
-        with patch("src.app.get_daily_energy_usage", return_value=[{"t": 1, "kwh": 1.0}]) as mock_daily:
-            with patch(
-                "src.app.get_moving_avg_daily_usage", return_value=[{"t": 1, "kwh": 1.0}]
-            ) as mock_moving:
-                response = client.get("/api/energy_summary")
-                assert response.status_code == 200
-                mock_daily.assert_called_once_with(start=None, end=None)
-                mock_moving.assert_called_once()
+    with (
+        patch("src.app.get_monthly_avg_daily_usage", return_value=5.0),
+        patch("src.app.get_daily_energy_usage", return_value=[{"t": 1, "kwh": 1.0}]) as mock_daily,
+        patch("src.app.get_moving_avg_daily_usage", return_value=[{"t": 1, "kwh": 1.0}]) as mock_moving,
+    ):
+        response = client.get("/api/energy_summary")
+        assert response.status_code == 200
+        mock_daily.assert_called_once_with(start=None, end=None)
+        mock_moving.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -154,15 +160,17 @@ def test_api_stats_swaps_inverted_range(client):
     now = datetime.now(local_timezone())
     later = now + timedelta(hours=1)
 
-    with patch("src.app.parse_time_param") as mock_parse:
-        with patch("src.app.get_stats", return_value={}) as mock_stats:
-            mock_parse.side_effect = [later, now]  # end, start - inverted
-            response = client.get("/api/stats?start=later&end=now")
-            assert response.status_code == 200
-            # Verify get_stats was called with corrected order
-            call_args = mock_stats.call_args[1]
-            assert call_args["start"] == now
-            assert call_args["end"] == later
+    with (
+        patch("src.app.parse_time_param") as mock_parse,
+        patch("src.app.get_stats", return_value={}) as mock_stats,
+    ):
+        mock_parse.side_effect = [later, now]  # end, start - inverted
+        response = client.get("/api/stats?start=later&end=now")
+        assert response.status_code == 200
+        # Verify get_stats was called with corrected order
+        call_args = mock_stats.call_args[1]
+        assert call_args["start"] == now
+        assert call_args["end"] == later
 
 
 def test_live_power_returns_payload(client):

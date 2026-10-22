@@ -24,17 +24,21 @@ def test_format_downtime(seconds, expected):
 
 def test_online_reports_downtime_from_last_reading():
     """After a restart, downtime comes from the DB, so it survives a restart mid-outage."""
-    with patch("src.mqtt.time_since_last_reading", return_value=timedelta(days=7, hours=1)):
-        with patch("src.mqtt.send_alert") as mock_alert:
-            handle_lwt_status("Online")
+    with (
+        patch("src.mqtt.time_since_last_reading", return_value=timedelta(days=7, hours=1)),
+        patch("src.mqtt.send_alert") as mock_alert,
+    ):
+        handle_lwt_status("Online")
     mock_alert.assert_called_once()
     assert "7d 1h 0m 0s" in mock_alert.call_args[0][0]
 
 
 def test_online_with_empty_db_omits_downtime():
-    with patch("src.mqtt.time_since_last_reading", return_value=None):
-        with patch("src.mqtt.send_alert") as mock_alert:
-            handle_lwt_status("Online")
+    with (
+        patch("src.mqtt.time_since_last_reading", return_value=None),
+        patch("src.mqtt.send_alert") as mock_alert,
+    ):
+        handle_lwt_status("Online")
     mock_alert.assert_called_once_with("Hardware device came *online*")
 
 

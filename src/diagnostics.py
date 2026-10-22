@@ -38,6 +38,7 @@ def _reachable(host: str) -> bool:
         result = subprocess.run(
             ["ping", "-c", "1", "-W", str(_PING_TIMEOUT_SECONDS), host],
             capture_output=True,
+            check=False,
             timeout=_PING_TIMEOUT_SECONDS + 2,
         )
     except (subprocess.SubprocessError, OSError):

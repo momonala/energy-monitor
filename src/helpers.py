@@ -1,11 +1,11 @@
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 from functools import lru_cache
 
 
 @lru_cache(maxsize=1)
 def local_timezone():
-    return datetime.now(timezone.utc).astimezone().tzinfo
+    return datetime.now(UTC).astimezone().tzinfo
 
 
 def parse_time_param(value: str | None) -> datetime | None:

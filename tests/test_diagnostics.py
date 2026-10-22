@@ -38,17 +38,21 @@ def test_classify_stall_names_the_fault_domain(gateway, access_point, meter, exp
 
 def test_reachable_meter_that_never_dropped_wifi_points_away_from_the_network():
     """All hops up and LinkCount=1 means the radio held — blame the broker, not the LAN."""
-    with patch("src.diagnostics._reachable", side_effect=_reach(True, True, True)):
-        with patch("src.diagnostics.meter_wifi_summary", return_value="wifi reconnects 1"):
-            verdict = classify_stall()
+    with (
+        patch("src.diagnostics._reachable", side_effect=_reach(True, True, True)),
+        patch("src.diagnostics.meter_wifi_summary", return_value="wifi reconnects 1"),
+    ):
+        verdict = classify_stall()
     assert "suspect the broker or ingestion service" in verdict
     assert "wifi reconnects 1" in verdict
 
 
 def test_pingable_but_wedged_meter_is_called_out_separately():
-    with patch("src.diagnostics._reachable", side_effect=_reach(True, True, True)):
-        with patch("src.diagnostics.meter_wifi_summary", return_value=None):
-            assert "wedged" in classify_stall()
+    with (
+        patch("src.diagnostics._reachable", side_effect=_reach(True, True, True)),
+        patch("src.diagnostics.meter_wifi_summary", return_value=None),
+    ):
+        assert "wedged" in classify_stall()
 
 
 def test_meter_wifi_summary_reports_radio_counters():
@@ -80,15 +84,17 @@ def test_check_ingestion_stall_only_probes_on_a_threshold_crossing():
     from src.database import check_ingestion_stall
 
     tick = timedelta(minutes=1)
-    with patch("src.database.classify_stall", return_value="diagnosis") as mock_classify:
-        with patch("src.database.send_alert") as mock_alert:
-            check_ingestion_stall(timedelta(minutes=3), tick)  # between thresholds
-            mock_classify.assert_not_called()
-            mock_alert.assert_not_called()
+    with (
+        patch("src.database.classify_stall", return_value="diagnosis") as mock_classify,
+        patch("src.database.send_alert") as mock_alert,
+    ):
+        check_ingestion_stall(timedelta(minutes=3), tick)  # between thresholds
+        mock_classify.assert_not_called()
+        mock_alert.assert_not_called()
 
-            check_ingestion_stall(timedelta(minutes=15), tick)  # on a threshold
-            mock_classify.assert_called_once()
-            assert "diagnosis" in mock_alert.call_args[0][0]
+        check_ingestion_stall(timedelta(minutes=15), tick)  # on a threshold
+        mock_classify.assert_called_once()
+        assert "diagnosis" in mock_alert.call_args[0][0]
 
 
 def test_check_ingestion_stall_is_quiet_without_any_reading():

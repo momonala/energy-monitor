@@ -27,13 +27,13 @@ from src.config import TOPIC
 from src.database import DEFAULT_LOOKBACK_WEEKS
 from src.database import DEFAULT_READINGS_BUCKET_MS
 from src.database import MAX_READINGS_BUCKET_MS
+from src.database import check_ingestion_stall
 from src.database import get_daily_energy_usage
 from src.database import get_monthly_avg_daily_usage
 from src.database import get_moving_avg_daily_usage
 from src.database import get_readings
 from src.database import get_stats
 from src.database import latest_energy_reading
-from src.database import check_ingestion_stall
 from src.database import log_db_health_check
 from src.database import num_energy_readings_last_hour
 from src.database import num_total_energy_readings

@@ -156,10 +156,9 @@ def format_mt681_summary(mt_payload: dict) -> str:
 
 def save_energy_readings(rows: list[dict]) -> None:
     """Insert parsed readings in one transaction, skipping any whose timestamp already exists."""
-    with metrics.timed("db.save_readings"):
-        with SessionLocal() as session:
-            result = session.connection().execute(insert(EnergyReading).on_conflict_do_nothing(), rows)
-            session.commit()
+    with metrics.timed("db.save_readings"), SessionLocal() as session:
+        result = session.connection().execute(insert(EnergyReading).on_conflict_do_nothing(), rows)
+        session.commit()
     metrics.increment("db.readings.saved", result.rowcount)
     duplicates = len(rows) - result.rowcount
     if duplicates:
@@ -313,32 +312,31 @@ def get_readings(start: datetime, end: datetime, bucket_ms: int) -> list[dict]:
         EnergyReading.timestamp_ms >= start_ms,
         EnergyReading.timestamp_ms <= end_ms,
     )
-    with metrics.timed("db.get_readings"):
-        with SessionLocal() as session:
-            if bucket_ms <= RAW_READING_INTERVAL_MS:
-                rows = (
-                    session.query(
-                        EnergyReading.timestamp_ms,
-                        EnergyReading.power_watts,
-                        EnergyReading.energy_in_kwh,
-                    )
-                    .filter(*time_filter)
-                    .order_by(EnergyReading.timestamp_ms)
-                    .all()
+    with metrics.timed("db.get_readings"), SessionLocal() as session:
+        if bucket_ms <= RAW_READING_INTERVAL_MS:
+            rows = (
+                session.query(
+                    EnergyReading.timestamp_ms,
+                    EnergyReading.power_watts,
+                    EnergyReading.energy_in_kwh,
                 )
-            else:
-                bucket = EnergyReading.timestamp_ms // bucket_ms
-                rows = (
-                    session.query(
-                        func.max(EnergyReading.timestamp_ms).label("timestamp_ms"),
-                        func.max(EnergyReading.power_watts).label("power_watts"),
-                        func.max(EnergyReading.energy_in_kwh).label("energy_in_kwh"),
-                    )
-                    .filter(*time_filter)
-                    .group_by(bucket)
-                    .order_by(func.max(EnergyReading.timestamp_ms))
-                    .all()
+                .filter(*time_filter)
+                .order_by(EnergyReading.timestamp_ms)
+                .all()
+            )
+        else:
+            bucket = EnergyReading.timestamp_ms // bucket_ms
+            rows = (
+                session.query(
+                    func.max(EnergyReading.timestamp_ms).label("timestamp_ms"),
+                    func.max(EnergyReading.power_watts).label("power_watts"),
+                    func.max(EnergyReading.energy_in_kwh).label("energy_in_kwh"),
                 )
+                .filter(*time_filter)
+                .group_by(bucket)
+                .order_by(func.max(EnergyReading.timestamp_ms))
+                .all()
+            )
 
     if rows:
         logger.debug(
@@ -434,44 +432,47 @@ def get_stats(start: datetime, end: datetime) -> dict:
     """
     start_ms = to_ms(start)
     end_ms = to_ms(end)
-    with metrics.timed("db.get_stats"):
-        with SessionLocal() as session:
-            first_row = (
-                session.query(EnergyReading)
-                .filter(EnergyReading.timestamp_ms >= start_ms, EnergyReading.timestamp_ms <= end_ms)
-                .order_by(EnergyReading.timestamp_ms.asc())
-                .first()
+    with metrics.timed("db.get_stats"), SessionLocal() as session:
+        first_row = (
+            session.query(EnergyReading)
+            .filter(EnergyReading.timestamp_ms >= start_ms, EnergyReading.timestamp_ms <= end_ms)
+            .order_by(EnergyReading.timestamp_ms.asc())
+            .first()
+        )
+        last_row = (
+            session.query(EnergyReading)
+            .filter(EnergyReading.timestamp_ms >= start_ms, EnergyReading.timestamp_ms <= end_ms)
+            .order_by(EnergyReading.timestamp_ms.desc())
+            .first()
+        )
+        agg = (
+            session.query(
+                func.min(EnergyReading.power_watts),
+                func.max(EnergyReading.power_watts),
+                func.avg(EnergyReading.power_watts),
+                func.count(EnergyReading.power_watts),
             )
-            last_row = (
-                session.query(EnergyReading)
-                .filter(EnergyReading.timestamp_ms >= start_ms, EnergyReading.timestamp_ms <= end_ms)
-                .order_by(EnergyReading.timestamp_ms.desc())
-                .first()
-            )
-            agg = (
-                session.query(
-                    func.min(EnergyReading.power_watts),
-                    func.max(EnergyReading.power_watts),
-                    func.avg(EnergyReading.power_watts),
-                    func.count(EnergyReading.power_watts),
-                )
-                .filter(EnergyReading.timestamp_ms >= start_ms, EnergyReading.timestamp_ms <= end_ms)
-                .one()
-            )
+            .filter(EnergyReading.timestamp_ms >= start_ms, EnergyReading.timestamp_ms <= end_ms)
+            .one()
+        )
 
     min_power, max_power, avg_power, count = agg
     logger.debug(f"[get_stats] {min_power=} {max_power=} {avg_power=} {count=}")
     energy_used = None
-    if first_row is not None and last_row is not None:
-        if first_row.energy_in_kwh is not None and last_row.energy_in_kwh is not None:
-            energy_used = float(last_row.energy_in_kwh) - float(first_row.energy_in_kwh)
-            if energy_used < 0:
-                raise NegativeEnergyError(
-                    f"Negative energy_used_kwh={energy_used:.4f} in window start={start!s} end={end!s}. "
-                    f"First reading: ts={first_row.timestamp_ms} energy_in_kwh={first_row.energy_in_kwh}. "
-                    f"Last reading: ts={last_row.timestamp_ms} energy_in_kwh={last_row.energy_in_kwh}. "
-                    "Cumulative meter may have reset or data is out of order."
-                )
+    if (
+        first_row is not None
+        and last_row is not None
+        and first_row.energy_in_kwh is not None
+        and last_row.energy_in_kwh is not None
+    ):
+        energy_used = float(last_row.energy_in_kwh) - float(first_row.energy_in_kwh)
+        if energy_used < 0:
+            raise NegativeEnergyError(
+                f"Negative energy_used_kwh={energy_used:.4f} in window start={start!s} end={end!s}. "
+                f"First reading: ts={first_row.timestamp_ms} energy_in_kwh={first_row.energy_in_kwh}. "
+                f"Last reading: ts={last_row.timestamp_ms} energy_in_kwh={last_row.energy_in_kwh}. "
+                "Cumulative meter may have reset or data is out of order."
+            )
 
     return {
         "energy_used_kwh": energy_used,
