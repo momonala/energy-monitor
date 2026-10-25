@@ -8,17 +8,13 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "sqlalchemy>=2.0.0,<3.0.0",
-    "paho-mqtt>=2.0.0,<3.0.0",
     "flask>=3.0.0,<4.0.0",
-    "flask-compress>=1.15,<2.0.0",
     "flask-apscheduler>=1.13,<2.0.0",
-    "pytest>=9.1.1",
-    "pytest-cov>=7.1.0",
-    "black",
-    "ruff>=0.17.0",
-    "typer>=0.27.3",
+    "flask-compress>=1.15,<2.0.0",
+    "paho-mqtt>=2.0.0,<3.0.0",
     "spyglass",
+    "sqlalchemy>=2.0.0,<3.0.0",
+    "typer>=0.27.3",
 ]
 
 [tool.config]
