@@ -27,7 +27,6 @@ logger = get_logger(__name__)
 
 db_queue = queue.Queue()
 
-_last_sensor_time: float | None = None
 _last_reading_ms: int | None = None
 FLUSH_INTERVAL_SECONDS = 300
 
@@ -120,7 +119,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
 
 def on_message(client, userdata, msg):
     """Callback for when the MQTT client receives a message."""
-    global _last_sensor_time, _last_reading_ms
+    global _last_reading_ms
     try:
         payload = msg.payload.decode()
         # LWT is a plain-text status ("Online"/"Offline"), not JSON
@@ -136,17 +135,12 @@ def on_message(client, userdata, msg):
         return
 
     if msg.topic == SENSOR_TOPIC:
-        now = time.perf_counter()
-        if _last_sensor_time is not None:
-            metrics.timing("mqtt.sensor.interval_ms", (now - _last_sensor_time) * 1000)
-        _last_sensor_time = now
         mt_payload = data.get("MT681")
         if not isinstance(mt_payload, dict):
             logger.warning("[mqtt] SENSOR without MT681: payload_keys=%s", list(data.keys()))
             return
         logger.debug("[mqtt] received SENSOR: %s", format_mt681_summary(mt_payload))
         metrics.increment("mqtt.messages.mqtt_reading")
-        metrics.gauge("mqtt.db_queue.depth", db_queue.qsize())
         _last_reading_ms = int(time.time() * 1000)
         db_queue.put({"timestamp_ms": _last_reading_ms, **parse_mt681(mt_payload)})
     elif msg.topic == STATE_TOPIC:
