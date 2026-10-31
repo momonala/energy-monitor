@@ -32,6 +32,9 @@ Real-time energy monitoring dashboard for MT681 smart meters via Tasmota MQTT.
   ```
 3. Configure `pyproject.toml`:
   Edit the `[tool.config]` section with your settings (MQTT, ports, `service_monitor_url`, etc.).
+4. Secrets: copy `.env.example` to `.env` and fill in `OSTROM_REFRESH_TOKEN` (the Ostrom app's
+  `refresh_token` cookie from a [sniff](https://github.com/momonala/sniff) capture; see
+  `docs/ostrom-api.md`). Push it to the Pi with `deploy secrets push`.
 
 ## Running
 
@@ -80,7 +83,11 @@ energy-monitor/
 │   ├── helpers.py      # Time parsing utilities
 │   ├── config.py       # Configuration constants
 │   ├── diagnostics.py  # Hop-ladder probe that names the fault domain behind a stall
+│   ├── ostrom.py       # Ostrom API client and month-end meter reading submission
+│   ├── env.py          # Secrets loaded from .env
 │   └── alerts.py       # Telegram alerts via Service Monitor API
+├── docs/
+│   └── ostrom-api.md   # Reverse-engineered Ostrom app API
 ├── templates/
 │   ├── _base.html      # Shared shell (sidebar, header, Spyglass layout)
 │   ├── index.html      # Desktop dashboard
@@ -294,6 +301,26 @@ The Flask app runs periodic tasks in-process via `flask-apscheduler`:
 | -------------- | --------------------------------------------------------------------------- |
 | Every minute   | `check_ingestion_stall` — detect, diagnose, and escalate ingestion outages   |
 | Hourly `:00`   | `log_db_health_check` — reading counts and DB size metrics (no alerts)       |
+| Last day of the month, hourly 10:00–22:00 | `run_scheduled_submission` — submit the meter reading to Ostrom |
+
+### Ostrom meter reading
+
+On the last day of each month the app submits the newest `energy_in_kwh`, rounded down to whole
+kWh, to Ostrom through the API behind its mobile app (`docs/ostrom-api.md`). The first attempt is
+at 10:00. Later hourly runs that day check Ostrom first and do nothing once a reading for today is
+on file, so retries and restarts never submit twice. It refuses to submit a reading older than an
+hour or lower than Ostrom's last actual reading. Ostrom's own estimates are ignored for that check,
+so an estimate that overshoots the meter cannot block the reading that corrects it.
+
+Auth is the app's `refresh_token` cookie (`OSTROM_REFRESH_TOKEN` in `.env`), valid for a year.
+When it expires the job fails with an HTTP 401 alert; capture a new token with sniff.
+
+Check it by hand, from the project root on the Pi (dry run by default; nothing is sent):
+
+```bash
+uv run ostrom-reading            # plans today's reading against the live API
+uv run ostrom-reading --submit   # also POSTs it
+```
 
 
 ### Alerts
@@ -305,6 +332,8 @@ Sent as Markdown via Service Monitor `POST /api/alert` (`service_monitor_url` in
 | ------- | ------- |
 | `check_ingestion_stall` (every minute) | `No readings for 15m` plus a verdict naming the fault domain |
 | Tasmota LWT `Online` | All-clear, with downtime measured from the last stored reading |
+| Ostrom reading submitted | The value, date and kWh since Ostrom's last actual reading |
+| Ostrom reading failed | The error; sent on the first (10:00) and final (22:00) attempt only |
 
 **`check_ingestion_stall` is the only source of outage alerts.** LWT `Offline` deliberately
 stays silent, and the hourly health check is metrics-only. The two run in different

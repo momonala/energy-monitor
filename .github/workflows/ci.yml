@@ -13,12 +13,7 @@ jobs:
       uses: actions/checkout@v4
     
     - name: Set up dummy secrets for CI
-      run: |
-        if [ -f "incognita/values.py.example" ]; then
-          cp incognita/values.py.example incognita/values.py
-        elif [ -f "src/values.py.example" ]; then
-          cp src/values.py.example src/values.py
-        fi
+      run: cp .env.example .env
     
     - name: Set up Python
       uses: actions/setup-python@v5

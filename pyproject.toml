@@ -12,6 +12,7 @@ dependencies = [
     "flask-apscheduler>=1.13,<2.0.0",
     "flask-compress>=1.15,<2.0.0",
     "paho-mqtt>=2.0.0,<3.0.0",
+    "python-dotenv>=1.0,<2.0",
     "spyglass",
     "sqlalchemy>=2.0.0,<3.0.0",
     "typer>=0.27.3",
@@ -56,6 +57,7 @@ packages = ["src"]
 [project.scripts]
 app = "src.app:main"
 config = "src.config:main"
+ostrom-reading = "src.ostrom:main"
 
 [tool.black]
 line-length = 110

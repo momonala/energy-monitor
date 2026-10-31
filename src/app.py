@@ -47,6 +47,9 @@ from src.live import start_live_feed
 from src.live import time_since_last_received
 from src.observability import get_logger
 from src.observability import metrics
+from src.ostrom import FIRST_ATTEMPT_HOUR
+from src.ostrom import LAST_ATTEMPT_HOUR
+from src.ostrom import run_scheduled_submission
 
 logger = get_logger(__name__)
 
@@ -104,6 +107,14 @@ def _time_since_last_reading() -> timedelta | None:
 def _scheduled_ingestion_watch() -> None:
     """Watch for ingestion stalls every minute. The only source of stall alerts."""
     check_ingestion_stall(_time_since_last_reading(), INGESTION_WATCH_INTERVAL)
+
+
+@scheduler.task(
+    "cron", id="ostrom_meter_reading", day="last", hour=f"{FIRST_ATTEMPT_HOUR}-{LAST_ATTEMPT_HOUR}", minute=0
+)
+def _scheduled_ostrom_meter_reading() -> None:
+    """Submit the month-end reading to Ostrom; later runs that day skip once it is on file."""
+    run_scheduled_submission(datetime.now().astimezone())
 
 
 _NAV_ACTIVE_BY_ENDPOINT = {
@@ -312,7 +323,9 @@ def main():
     logger.info(f"Status: {json.dumps(status(), indent=2)}")
     start_live_feed()
     scheduler.start()
-    logger.info("Started APScheduler: hourly DB health check, per-minute ingestion watch")
+    logger.info(
+        "Started APScheduler: hourly DB health check, per-minute ingestion watch, month-end Ostrom reading"
+    )
     app.run(host="0.0.0.0", port=FLASK_PORT, debug=False)
 
 
