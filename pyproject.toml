@@ -59,11 +59,6 @@ app = "src.app:main"
 config = "src.config:main"
 ostrom-reading = "src.ostrom:main"
 
-[tool.black]
-line-length = 110
-target-version = ['py312']
-include = '\.pyi?$'
-
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true
@@ -91,7 +86,6 @@ exclude_lines = [
 
 [tool.uv.sources]
 spyglass = { git = "https://github.com/momonala/spyglass.git", rev = "main" }
-
 
 [tool.uv]
 exclude-newer = "1 week"
