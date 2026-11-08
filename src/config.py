@@ -20,7 +20,6 @@ MQTT_PORT = _tool_config["mqtt_port"]
 TOPIC = _tool_config["mqtt_topic"]
 TASMOTA_UI_URL = _tool_config["tasmota_ui_url"]
 GATEWAY_IP = _tool_config["gateway_ip"]
-ACCESS_POINT_IP = _tool_config["access_point_ip"]
 DATABASE_PATH = _tool_config["database_path"]
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 TUNNEL_NAME = _tool_config["tunnel_name"]

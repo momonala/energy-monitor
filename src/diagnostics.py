@@ -4,9 +4,9 @@ From the database, every stall looks the same: readings stop. But "the meter dro
 WiFi" and "this host lost its path to the LAN" need opposite responses, and in Aug 2026 the
 second was misread as the first for seven days.
 
-Probing a ladder of hops separates them. The access point is the discriminator — a meter
-that fell off WiFi leaves the AP perfectly reachable, whereas a segmented LAN takes out
-both. Probing only the meter cannot tell the two apart, and reports the wrong one.
+Probing a ladder of hops separates them. The meter joins the router's own WiFi, so the
+gateway is the discriminator: a meter that fell off WiFi leaves the gateway reachable,
+whereas a host that lost its LAN path cannot reach either.
 """
 
 import json
@@ -15,7 +15,6 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlparse
 
-from src.config import ACCESS_POINT_IP
 from src.config import GATEWAY_IP
 from src.config import TASMOTA_UI_URL
 from src.observability import get_logger
@@ -74,14 +73,8 @@ def classify_stall() -> str:
     if not _reachable(GATEWAY_IP):
         return f"gateway {GATEWAY_IP} unreachable — this host's own network link is down"
 
-    if not _reachable(ACCESS_POINT_IP):
-        return (
-            f"gateway OK but access point {ACCESS_POINT_IP} unreachable — LAN path fault "
-            "(switch isolation, cabling, or routing), not the meter"
-        )
-
     if not _reachable(METER_IP):
-        return f"gateway and access point OK, meter {METER_IP} unreachable — meter is offline (power or WiFi range)"
+        return f"gateway OK, meter {METER_IP} unreachable — meter is offline (power or WiFi range)"
 
     wifi = meter_wifi_summary()
     if wifi is None:

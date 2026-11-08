@@ -354,17 +354,16 @@ messages; the same outage now sends 5 in the first day, each one diagnosed.
 An empty database looks the same whether the meter dropped off WiFi or this host lost its
 path to the LAN, so the alert probes a ladder of hops and names which one broke:
 
-| gateway | access point | meter | Verdict |
-| ------- | ------------ | ----- | ------- |
-| ❌ | — | — | this host's own link is down |
-| ✅ | ❌ | ❌ | LAN path fault — switch isolation, cabling, routing |
-| ✅ | ✅ | ❌ | meter offline — power or WiFi range |
-| ✅ | ✅ | ✅ | broker or ingestion service, not the network |
+| gateway | meter | Verdict |
+| ------- | ----- | ------- |
+| ❌ | — | this host's own link is down |
+| ✅ | ❌ | meter offline — power or WiFi range |
+| ✅ | ✅ (no HTTP) | meter wedged — needs a power cycle |
+| ✅ | ✅ | broker or ingestion service, not the network |
 
-**The access point is the discriminator.** A meter that fell off WiFi leaves it reachable;
-a segmented LAN does not. Probing only the meter cannot separate those two cases and
-reports the wrong one — which is exactly how a switch-isolation fault was misread as a
-device outage for seven days. When the meter does answer, its `Status 11` counters
-(`LinkCount`, `Downtime`, `Uptime`) further separate a flapping radio from a clean crash.
+**The gateway is the discriminator.** The meter joins the router's own WiFi, so a meter
+that fell off WiFi leaves the gateway reachable while a host that lost its LAN path cannot
+reach either. When the meter does answer, its `Status 11` counters (`LinkCount`,
+`Downtime`, `Uptime`) further separate a flapping radio from a clean crash.
 
-Probe targets are `gateway_ip` and `access_point_ip` in `[tool.config]`.
+Probe targets are `gateway_ip` and the host of `tasmota_ui_url` in `[tool.config]`.

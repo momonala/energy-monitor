@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
+from src.config import GATEWAY_IP
+from src.diagnostics import METER_IP
 from src.diagnostics import classify_stall
 from src.diagnostics import meter_wifi_summary
 
@@ -16,30 +18,28 @@ _STATUS_11 = {
 }
 
 
-def _reach(gateway: bool, access_point: bool, meter: bool):
+def _reach(gateway: bool, meter: bool):
     """Build a _reachable side effect keyed by the hop being probed."""
-    verdicts = {"192.168.2.1": gateway, "192.168.2.102": access_point, "192.168.2.116": meter}
+    verdicts = {GATEWAY_IP: gateway, METER_IP: meter}
     return lambda host: verdicts[host]
 
 
 @pytest.mark.parametrize(
-    "gateway,access_point,meter,expected_phrase",
+    "gateway,meter,expected_phrase",
     [
-        (False, False, False, "this host's own network link is down"),
-        # The Aug 2026 outage: the meter was healthy, the path to it was not.
-        (True, False, False, "LAN path fault"),
-        (True, True, False, "meter is offline"),
+        (False, False, "this host's own network link is down"),
+        (True, False, "meter is offline"),
     ],
 )
-def test_classify_stall_names_the_fault_domain(gateway, access_point, meter, expected_phrase):
-    with patch("src.diagnostics._reachable", side_effect=_reach(gateway, access_point, meter)):
+def test_classify_stall_names_the_fault_domain(gateway, meter, expected_phrase):
+    with patch("src.diagnostics._reachable", side_effect=_reach(gateway, meter)):
         assert expected_phrase in classify_stall()
 
 
 def test_reachable_meter_that_never_dropped_wifi_points_away_from_the_network():
     """All hops up and LinkCount=1 means the radio held — blame the broker, not the LAN."""
     with (
-        patch("src.diagnostics._reachable", side_effect=_reach(True, True, True)),
+        patch("src.diagnostics._reachable", side_effect=_reach(True, True)),
         patch("src.diagnostics.meter_wifi_summary", return_value="wifi reconnects 1"),
     ):
         verdict = classify_stall()
@@ -49,7 +49,7 @@ def test_reachable_meter_that_never_dropped_wifi_points_away_from_the_network():
 
 def test_pingable_but_wedged_meter_is_called_out_separately():
     with (
-        patch("src.diagnostics._reachable", side_effect=_reach(True, True, True)),
+        patch("src.diagnostics._reachable", side_effect=_reach(True, True)),
         patch("src.diagnostics.meter_wifi_summary", return_value=None),
     ):
         assert "wedged" in classify_stall()
