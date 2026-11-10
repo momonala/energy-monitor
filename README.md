@@ -110,7 +110,7 @@ energy-monitor/
 │   └── energy.db       # SQLite database
 ├── tests/
 │   ├── test_*.py       # Python tests (pytest)
-│   └── js/             # Browser JS tests (node --test "tests/js/*.test.js")
+│   └── js/             # Browser JS tests (node --test tests/js/)
 └── install/
     ├── install.sh                                # Raspberry Pi setup script
     ├── projects_energy-monitor.service           # systemd service for web app (includes APScheduler)

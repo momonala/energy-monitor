@@ -1,5 +1,4 @@
 import os
-import time
 from datetime import datetime
 from datetime import timedelta
 
@@ -21,6 +20,7 @@ from src.config import DATABASE_URL
 from src.diagnostics import classify_stall
 from src.helpers import local_timezone
 from src.ingestion import IngestionState
+from src.ingestion import now_ms
 from src.observability import get_logger
 from src.observability import metrics
 
@@ -28,10 +28,6 @@ logger = get_logger(__name__)
 
 MS_PER_HOUR = 3_600_000
 MS_PER_DAY = 86_400_000
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 
 def to_ms(dt: datetime) -> int:
@@ -76,7 +72,7 @@ class EnergyReading(Base):
 
     # UTC milliseconds since epoch. Must stay `Integer`: only INTEGER PRIMARY KEY is SQLite's rowid;
     # any other type adds a second index written on every insert.
-    timestamp_ms = Column(Integer, default=_now_ms, nullable=False, primary_key=True)
+    timestamp_ms = Column(Integer, default=now_ms, nullable=False, primary_key=True)
     meter_id = Column(String(255), nullable=True)
     power_watts = Column(Float, nullable=True)
     energy_in_kwh = Column(Float, nullable=True)
@@ -189,7 +185,7 @@ def get_monthly_avg_daily_usage() -> float:
     If you have less than a year of data (e.g. 4 months), uses that span.
     Returns kWh/day.
     """
-    year_ago_ms = _now_ms() - YEARLY_AVG_DAYS * MS_PER_DAY
+    year_ago_ms = now_ms() - YEARLY_AVG_DAYS * MS_PER_DAY
 
     with SessionLocal() as session:
         latest = session.query(EnergyReading).order_by(EnergyReading.timestamp_ms.desc()).first()
@@ -216,7 +212,7 @@ def num_energy_readings_last_hour() -> int:
     """Get the number of energy readings in the last hour."""
     with SessionLocal() as session:
         return (
-            session.query(EnergyReading).filter(EnergyReading.timestamp_ms >= _now_ms() - MS_PER_HOUR).count()
+            session.query(EnergyReading).filter(EnergyReading.timestamp_ms >= now_ms() - MS_PER_HOUR).count()
         )
 
 
@@ -355,8 +351,8 @@ def get_daily_energy_usage(
     Partial days are those with less than 23 hours of coverage.
     """
     tz = local_timezone()
-    start_ms = to_ms(start) if start is not None else _now_ms() - DEFAULT_LOOKBACK_WEEKS * 7 * MS_PER_DAY
-    end_ms = to_ms(end) if end is not None else _now_ms()
+    start_ms = to_ms(start) if start is not None else now_ms() - DEFAULT_LOOKBACK_WEEKS * 7 * MS_PER_DAY
+    end_ms = to_ms(end) if end is not None else now_ms()
 
     sql = text("""
     WITH filtered AS (

@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy import text
 
+from src.database import EnergyReading
 from src.database import check_ingestion_stall
 from src.database import get_daily_energy_usage
 from src.database import get_moving_avg_daily_usage
@@ -263,3 +264,19 @@ def test_check_ingestion_stall_alerts_on_threshold_crossing(age, alert):
         mock_alert.assert_not_called()
     else:
         mock_alert.assert_called_once_with(alert)
+
+
+def test_last_reading_ms_returns_newest_timestamp_in_ms(test_db, monkeypatch):
+    import src.database
+
+    monkeypatch.setattr(src.database, "SessionLocal", test_db)
+    assert src.database.last_reading_ms() is None
+    with test_db() as session:
+        session.add_all(
+            [
+                EnergyReading(timestamp_ms=1_700_000_000_123, power_watts=1.0),
+                EnergyReading(timestamp_ms=1_700_000_010_456, power_watts=2.0),
+            ]
+        )
+        session.commit()
+    assert src.database.last_reading_ms() == 1_700_000_010_456

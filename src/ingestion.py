@@ -33,10 +33,8 @@ class IngestionState:
 
     @property
     def is_stale(self) -> bool:
-        """The live readout greys out only once the age is past the threshold."""
         return self.age is None or self.age > STALE_AFTER
 
     @property
     def is_receiving(self) -> bool:
-        """`/status` reports healthy only while the age is under the threshold."""
         return self.age is not None and self.age < STALE_AFTER

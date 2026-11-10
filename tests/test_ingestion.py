@@ -1,10 +1,12 @@
 """Tests for ingestion liveness derived from reading age."""
 
+import time
 from datetime import timedelta
 
 import pytest
 
 from src.ingestion import IngestionState
+from src.ingestion import now_ms
 from src.ingestion import reading_age
 
 NOW_MS = 1_700_000_000_000
@@ -41,3 +43,11 @@ def test_state_without_any_reading():
     assert state.is_stale is True
     assert state.is_receiving is False
     assert state.age_seconds is None
+
+
+def test_now_ms_is_integer_epoch_milliseconds():
+    before = time.time()
+    result = now_ms()
+    after = time.time()
+    assert isinstance(result, int)
+    assert int(before * 1000) <= result <= int(after * 1000)

@@ -32,7 +32,7 @@ jobs:
       run: uv run --with pytest --with pytest-cov pytest
 
     - name: Run JS tests
-      run: node --test "tests/js/*.test.js"
+      run: node --test tests/js/
 
     - name: Check formatting
       run: uvx ruff format --check .
