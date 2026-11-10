@@ -126,9 +126,6 @@ function setConnectionStatus(statusEl, ok, text) {
 // =============================================================================
 // Live Power Readout
 // =============================================================================
-const LIVE_POWER_INTERVAL_MS = 5000;
-const LIVE_POWER_MAX_BACKOFF_MS = 30000;
-
 /**
  * Format an age in seconds as a compact suffix ("12s ago", "4m ago").
  */
@@ -192,91 +189,47 @@ function startLivePower(el, { intervalMs = LIVE_POWER_INTERVAL_MS, statusEl = nu
     (metaHost || el).appendChild(metaEl);
   }
 
-  let timer = null;
-  let controller = null;
-  let failures = 0;
-  let stopped = false;
-  let ageTimer = null;
-  let lastAgeS = null;
-  let lastAgeAt = 0;
-
-  function renderAge() {
-    ageEl.textContent = lastAgeS == null ? "" : formatAge(lastAgeS + (Date.now() - lastAgeAt) / 1000);
-  }
-
-  function startAgeTicker() {
-    if (!ageEl || ageTimer) return;
-    ageTimer = setInterval(renderAge, 1000);
-  }
-
-  function stopAgeTicker() {
-    clearInterval(ageTimer);
-    ageTimer = null;
-  }
-
-  function render(data) {
+  function renderData(data) {
     const stale = !data || data.stale;
     if (el) {
       const watts = data && data.w;
       valueEl.textContent = watts == null ? "–" : Fmt.n(watts, 0);
       el.classList.toggle("is-stale", Boolean(stale));
       timeEl.textContent = formatReadingTime(data && data.t);
-      lastAgeS = data && data.age_s != null ? data.age_s : null;
-      lastAgeAt = Date.now();
-      renderAge();
-      startAgeTicker();
     }
     if (statusEl) setConnectionStatus(statusEl, !stale);
     if (onUpdate) onUpdate(data || null);
   }
 
-  function schedule(delayMs) {
-    if (stopped || document.hidden) return;
-    timer = setTimeout(tick, delayMs);
+  function renderFailure(e) {
+    console.error("[livePower] fetch failed:", e);
+    if (el) el.classList.add("is-stale");
+    if (statusEl) setConnectionStatus(statusEl, false);
+    if (onUpdate) onUpdate(null);
   }
 
-  async function tick() {
-    if (stopped || document.hidden) return;
-    if (controller) controller.abort();
-    controller = new AbortController();
-    try {
-      const data = await fetchJson("/api/live_power", { signal: controller.signal });
-      failures = 0;
-      render(data);
-      schedule(intervalMs);
-    } catch (e) {
-      if (e.name === "AbortError") return;
-      failures += 1;
-      console.error("[livePower] fetch failed:", e);
-      if (el) el.classList.add("is-stale");
-      if (statusEl) setConnectionStatus(statusEl, false);
-      if (onUpdate) onUpdate(null);
-      schedule(Math.min(intervalMs * 2 ** failures, LIVE_POWER_MAX_BACKOFF_MS));
-    }
-  }
+  const poller = createLivePowerPoller({
+    fetchPower: (signal) => fetchJson("/api/live_power", { signal }),
+    isHidden: () => document.hidden,
+    onData: renderData,
+    onFailure: renderFailure,
+    onAge: ageEl ? (seconds) => { ageEl.textContent = formatAge(seconds); } : null,
+    intervalMs,
+  });
 
   function onVisibilityChange() {
-    if (document.hidden) {
-      clearTimeout(timer);
-      stopAgeTicker();
-      if (controller) controller.abort();
-    } else {
-      failures = 0;
-      tick();
-    }
+    if (document.hidden) poller.hide();
+    else poller.show();
+  }
+
+  function stop() {
+    poller.stop();
+    document.removeEventListener("visibilitychange", onVisibilityChange);
   }
 
   document.addEventListener("visibilitychange", onVisibilityChange);
   window.addEventListener("pagehide", stop);
-  tick();
-
-  function stop() {
-    stopped = true;
-    clearTimeout(timer);
-    stopAgeTicker();
-    if (controller) controller.abort();
-    document.removeEventListener("visibilitychange", onVisibilityChange);
-  }
+  poller.start();
   return stop;
 }
 

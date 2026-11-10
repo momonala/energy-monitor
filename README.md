@@ -104,11 +104,13 @@ energy-monitor/
 │   ├── compare.js      # Compare page frontend
 │   ├── mobile.js       # Mobile frontend: simplified chart, stats, daily table
 │   ├── shared.js       # Shared utilities and CSS→JS theme bridge
+│   ├── live-power-poller.js  # Live power poller state machine (tested with node --test)
 │   └── styles.css      # Stylesheet entry point (@imports layered CSS)
 ├── data/
 │   └── energy.db       # SQLite database
 ├── tests/
-│   └── test_*.py       # Test files
+│   ├── test_*.py       # Python tests (pytest)
+│   └── js/             # Browser JS tests (node --test "tests/js/*.test.js")
 └── install/
     ├── install.sh                                # Raspberry Pi setup script
     ├── projects_energy-monitor.service           # systemd service for web app (includes APScheduler)
