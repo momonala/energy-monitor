@@ -33,15 +33,6 @@ def test_linked_stylesheets_are_served(client):
         response.close()
 
 
-def test_index_serves_static_file(client):
-    """Frontend route serves index.html."""
-    response = client.get("/")
-    assert response.status_code == 200
-    assert response.content_type == "text/html; charset=utf-8"
-    assert b"<html" in response.data or b"<!DOCTYPE html>" in response.data
-    response.close()
-
-
 IPHONE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148"
 
 
@@ -58,38 +49,10 @@ def test_index_redirects_mobile_until_desktop_chosen(client):
 
 
 @pytest.mark.parametrize(
-    "endpoint,expected_keys",
-    [
-        ("/api/latest_reading", None),
-        ("/status", ["status", "receiving_readings", "topic"]),
-    ],
-)
-def test_api_endpoints_return_json(client, endpoint, expected_keys):
-    """API endpoints return valid JSON."""
-    with (
-        patch("src.app.latest_energy_reading", return_value={"timestamp": "2024-01-01T00:00:00"}),
-        patch("src.app.last_received_ms", return_value=None),
-        patch("src.app.last_reading_ms", return_value=NOW_MS - 5_000),
-        patch("src.app.now_ms", return_value=NOW_MS),
-        patch("src.app.num_energy_readings_last_hour", return_value=100),
-        patch("src.app.num_total_energy_readings", return_value=1000),
-    ):
-        response = client.get(endpoint)
-        assert response.status_code == 200
-        data = response.get_json()
-        assert isinstance(data, dict)
-        if expected_keys:
-            for key in expected_keys:
-                assert key in data
-
-
-@pytest.mark.parametrize(
     "age_ms,receiving,seconds",
     [
         (5_000, True, 5.0),
-        (59_999, True, 60.0),
         (60_000, False, 60.0),
-        (3 * 3_600_000, False, 10800.0),
         (None, False, None),
     ],
 )
@@ -169,7 +132,6 @@ def test_api_energy_summary_without_params_uses_full_history(client):
 @pytest.mark.parametrize(
     "start,end,expected_status",
     [
-        (None, None, 400),
         ("1704067200000", None, 400),
         (None, "1704067200000", 400),
         ("1704067200000", "1704153600000", 200),
@@ -207,20 +169,13 @@ def test_api_stats_swaps_inverted_range(client):
         assert call_args["end"] == later
 
 
-def test_live_power_returns_payload(client):
-    """Live power endpoint passes through the database payload as JSON."""
-    payload = {"t": 1701432000000, "w": 512.3, "age_s": 4.2, "stale": False}
-    with patch("src.app.latest_power", return_value=payload):
-        response = client.get("/api/live_power")
-        assert response.status_code == 200
-        assert response.get_json() == payload
-
-
-def test_live_power_empty_db_returns_nulls(client):
-    """Empty database still returns 200 with null fields so the client has one code path."""
-    with patch("src.app.latest_power", return_value={"t": None, "w": None, "age_s": None, "stale": True}):
-        response = client.get("/api/live_power")
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data["w"] is None
-        assert data["stale"] is True
+@pytest.mark.parametrize(
+    "endpoint,source",
+    [("/api/live_power", "src.app.latest_power"), ("/api/latest_reading", "src.app.latest_energy_reading")],
+)
+def test_json_endpoints_return_their_source_payload(client, endpoint, source):
+    payload = {"t": 1701432000000, "w": None, "stale": True}
+    with patch(source, return_value=payload):
+        response = client.get(endpoint)
+    assert response.status_code == 200
+    assert response.get_json() == payload

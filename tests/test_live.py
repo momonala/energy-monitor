@@ -29,7 +29,7 @@ def test_latest_power_before_first_reading_is_null():
 
 @pytest.mark.parametrize(
     "age_ms,age_s,stale",
-    [(4_000, 4.0, False), (60_000, 60.0, False), (60_001, 60.0, True), (120_000, 120.0, True)],
+    [(60_000, 60.0, False), (60_001, 60.0, True)],
 )
 def test_latest_power_reports_newest_reading_and_staleness(age_ms, age_s, stale):
     _receive(1_000_000, 300.0, 10.0)

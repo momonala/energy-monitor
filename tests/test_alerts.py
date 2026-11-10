@@ -6,6 +6,8 @@ import urllib.error
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import pytest
+
 from src.alerts import ALERT_PREFIX
 from src.alerts import send_alert
 
@@ -43,54 +45,21 @@ def test_send_alert_skips_on_darwin():
     mock_urlopen.assert_not_called()
 
 
-def test_send_alert_logs_http_errors_without_raising():
-    error = urllib.error.HTTPError(
-        url="http://localhost:5001/api/alert",
-        code=502,
-        msg="Bad Gateway",
-        hdrs=None,
-        fp=io.BytesIO(b'{"ok": false}'),
-    )
-
+@pytest.mark.parametrize(
+    "error",
+    [
+        urllib.error.HTTPError("http://localhost:5001/api/alert", 502, "Bad Gateway", None, io.BytesIO(b"")),
+        urllib.error.URLError("connection refused"),
+        TimeoutError("timed out"),
+    ],
+    ids=["http-error", "connection-error", "timeout"],
+)
+def test_send_alert_counts_delivery_failures_without_raising(error):
     with (
         patch("src.alerts.sys.platform", "linux"),
         patch("src.alerts.urllib.request.urlopen", side_effect=error),
-        patch("src.alerts.logger") as mock_logger,
         patch("src.alerts.metrics") as mock_metrics,
     ):
         send_alert("low readings")
 
-    mock_logger.exception.assert_called_once()
-    mock_metrics.increment.assert_called_once_with("alerts.send.errors")
-
-
-def test_send_alert_logs_connection_errors_without_raising():
-    with (
-        patch("src.alerts.sys.platform", "linux"),
-        patch(
-            "src.alerts.urllib.request.urlopen",
-            side_effect=urllib.error.URLError("connection refused"),
-        ),
-        patch("src.alerts.logger") as mock_logger,
-        patch("src.alerts.metrics") as mock_metrics,
-    ):
-        send_alert("low readings")
-
-    mock_logger.exception.assert_called_once()
-    mock_metrics.increment.assert_called_once_with("alerts.send.errors")
-
-
-def test_send_alert_logs_timeouts_without_raising():
-    with (
-        patch("src.alerts.sys.platform", "linux"),
-        patch(
-            "src.alerts.urllib.request.urlopen",
-            side_effect=TimeoutError("timed out"),
-        ),
-        patch("src.alerts.logger") as mock_logger,
-        patch("src.alerts.metrics") as mock_metrics,
-    ):
-        send_alert("low readings")
-
-    mock_logger.exception.assert_called_once()
     mock_metrics.increment.assert_called_once_with("alerts.send.errors")

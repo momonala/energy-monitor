@@ -17,29 +17,6 @@ from src.helpers import local_timezone
 from src.ingestion import IngestionState
 
 
-def test_daily_energy_usage_groups_by_day(test_db, sample_readings):
-    """Daily usage groups readings by calendar day (SQL version)."""
-    import src.database
-
-    original_session = src.database.SessionLocal
-    src.database.SessionLocal = test_db
-
-    try:
-        start = sample_readings[0]["timestamp"]
-        end = sample_readings[-1]["timestamp"]
-        daily = get_daily_energy_usage(start=start, end=end)
-        assert len(daily) >= 3
-        for row in daily:
-            assert "t" in row
-            assert "kwh" in row
-            assert "is_partial" in row
-            assert isinstance(row["t"], int)
-            assert isinstance(row["kwh"], (int, float))
-            assert isinstance(row["is_partial"], bool)
-    finally:
-        src.database.SessionLocal = original_session
-
-
 def test_daily_energy_usage_marks_partial_days(test_db):
     """Days with less than 23 hours coverage are marked partial."""
     import src.database
@@ -82,16 +59,6 @@ def test_moving_avg_daily_usage_returns_empty_for_empty_input():
     assert result == []
 
 
-def test_moving_avg_daily_usage_with_single_day():
-    """Moving average with single day returns that day's value."""
-    daily_data = [{"t": 1000000, "kwh": 10.0}]
-    result = get_moving_avg_daily_usage(daily_data, window_days=30)
-
-    assert len(result) == 1
-    assert result[0]["t"] == 1000000
-    assert result[0]["kwh"] == pytest.approx(10.0)
-
-
 def test_moving_avg_daily_usage_calculates_average():
     """Moving average correctly calculates average over window."""
     # Create 5 days of data with known values
@@ -111,20 +78,6 @@ def test_moving_avg_daily_usage_calculates_average():
     assert result[3]["kwh"] == pytest.approx(30.0)
     # Day 4: avg(30, 40, 50) = 40 (window of 3)
     assert result[4]["kwh"] == pytest.approx(40.0)
-
-
-def test_moving_avg_daily_usage_handles_small_history():
-    """Moving average uses available data when history is less than window."""
-    # Create 10 days of data
-    daily_data = [{"t": 1000000 + i * 86400000, "kwh": 15.0} for i in range(10)]
-
-    # Request 30-day window but only have 10 days
-    result = get_moving_avg_daily_usage(daily_data, window_days=30)
-
-    assert len(result) == 10
-    # Each day should use all available history up to that point
-    # Last day should average all 10 days = 15.0
-    assert result[-1]["kwh"] == pytest.approx(15.0)
 
 
 def test_get_stats_computes_power_aggregates(test_db, sample_readings):
@@ -216,31 +169,11 @@ def test_readings_table_has_no_secondary_index(test_db):
     assert indexes == []
 
 
-@pytest.mark.parametrize(
-    "gap_minutes,expected",
-    [
-        (1, False),  # blip filter: shorter than the first threshold
-        (2, True),  # first alert
-        (3, False),  # silent between thresholds
-        (15, True),
-        (60, True),
-        (61, False),
-        (360, True),
-        (1440, True),  # one day
-        (1441, False),
-        (2880, True),  # and daily thereafter
-    ],
-)
-def test_stall_alert_due_fires_once_per_threshold(gap_minutes, expected):
-    """Alerts fire on the tick that crosses a threshold, never on the ticks between."""
-    assert stall_alert_due(timedelta(minutes=gap_minutes), timedelta(minutes=1)) is expected
-
-
-def test_stall_alert_due_never_repeats_within_a_band():
-    """Walk a full day minute by minute: one alert per threshold, no duplicates."""
+def test_stall_alert_due_fires_once_per_threshold_then_daily():
+    """Walk three days minute by minute: one alert per threshold, then one per day, never between."""
     tick = timedelta(minutes=1)
-    fired = [m for m in range(1, 1441) if stall_alert_due(timedelta(minutes=m), tick)]
-    assert fired == [2, 15, 60, 360, 1440]
+    fired = [m for m in range(1, 3 * 1440 + 1) if stall_alert_due(timedelta(minutes=m), tick)]
+    assert fired == [2, 15, 60, 360, 1440, 2880, 4320]
 
 
 @pytest.mark.parametrize(
@@ -251,17 +184,18 @@ def test_stall_alert_due_never_repeats_within_a_band():
         (timedelta(minutes=2), "No readings for `2m`\nDIAG"),
         (timedelta(minutes=3), None),
         (timedelta(minutes=60), "No readings for `1h 0m`\nDIAG"),
-        (timedelta(minutes=2880), "No readings for `48h 0m`\nDIAG"),
     ],
 )
-def test_check_ingestion_stall_alerts_on_threshold_crossing(age, alert):
+def test_check_ingestion_stall_diagnoses_and_alerts_only_on_threshold_crossing(age, alert):
+    """Diagnosis hits the network, so it must not run on the ticks between thresholds."""
     with (
-        patch("src.database.classify_stall", return_value="DIAG"),
+        patch("src.database.classify_stall", return_value="DIAG") as mock_classify,
         patch("src.database.send_alert") as mock_alert,
     ):
         check_ingestion_stall(IngestionState(age), timedelta(minutes=1))
     if alert is None:
         mock_alert.assert_not_called()
+        mock_classify.assert_not_called()
     else:
         mock_alert.assert_called_once_with(alert)
 

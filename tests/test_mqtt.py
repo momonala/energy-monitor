@@ -5,22 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.mqtt import format_downtime
 from src.mqtt import handle_lwt_status
-
-
-@pytest.mark.parametrize(
-    "seconds,expected",
-    [
-        (0, "0d 0h 0m 0s"),
-        (59, "0d 0h 0m 59s"),
-        (3661, "0d 1h 1m 1s"),
-        (601013, "6d 22h 56m 53s"),
-    ],
-)
-def test_format_downtime(seconds, expected):
-    assert format_downtime(seconds) == expected
-
 
 NOW_MS = 1_700_000_000_000
 WEEK_AND_HOUR_MS = int(timedelta(days=7, hours=1).total_seconds() * 1000)

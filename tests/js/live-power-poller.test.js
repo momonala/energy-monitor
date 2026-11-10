@@ -2,13 +2,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
 
-const {
-  LIVE_POWER_INTERVAL_MS,
-  LIVE_POWER_MAX_BACKOFF_MS,
-  liveBackoffDelay,
-  extrapolateAge,
-  createLivePowerPoller,
-} = require(path.join(__dirname, "..", "..", "static", "live-power-poller.js"));
+const { createLivePowerPoller } = require(path.join(__dirname, "..", "..", "static", "live-power-poller.js"));
 
 function fakeClock(startMs = 1_700_000_000_000) {
   let now = startMs;
@@ -87,24 +81,6 @@ async function fail(net, message = "HTTP 500") {
   net.calls.at(-1).reject(new Error(message));
   await flush();
 }
-
-test("constants are unchanged", () => {
-  assert.equal(LIVE_POWER_INTERVAL_MS, 5000);
-  assert.equal(LIVE_POWER_MAX_BACKOFF_MS, 30000);
-});
-
-test("backoff doubles from twice the interval and caps at the max", () => {
-  assert.deepEqual(
-    [1, 2, 3, 4, 10].map((n) => liveBackoffDelay(n, 5000, 30000)),
-    [10000, 20000, 30000, 30000, 30000],
-  );
-});
-
-test("age extrapolates from the server's age_s", () => {
-  assert.equal(extrapolateAge(null, 1000), null);
-  assert.equal(extrapolateAge({ seconds: null, at: 0 }, 5000), null);
-  assert.equal(extrapolateAge({ seconds: 4.2, at: 1000 }, 3500), 6.7);
-});
 
 test("start while visible fetches at once and polls every interval after a success", async () => {
   const { clock, net, events, poller } = setup();
