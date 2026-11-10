@@ -6,6 +6,7 @@ import pytest
 
 import src.live
 from src.live import append_unsaved_readings
+from src.live import last_received_ms
 from src.live import latest_power
 from src.live import record_sensor_payload
 
@@ -18,7 +19,7 @@ def empty_feed():
 
 
 def _receive(t_ms: int, power: float, energy: float) -> None:
-    with patch("src.live._now_ms", return_value=t_ms):
+    with patch("src.live.now_ms", return_value=t_ms):
         record_sensor_payload({"MT681": {"Power": power, "E_in": energy}})
 
 
@@ -26,15 +27,23 @@ def test_latest_power_before_first_reading_is_null():
     assert latest_power() == {"t": None, "w": None, "age_s": None, "stale": True}
 
 
-@pytest.mark.parametrize("age_ms,stale", [(4_000, False), (120_000, True)])
-def test_latest_power_reports_newest_reading_and_staleness(age_ms, stale):
+@pytest.mark.parametrize(
+    "age_ms,age_s,stale",
+    [(4_000, 4.0, False), (60_000, 60.0, False), (60_001, 60.0, True), (120_000, 120.0, True)],
+)
+def test_latest_power_reports_newest_reading_and_staleness(age_ms, age_s, stale):
     _receive(1_000_000, 300.0, 10.0)
     _receive(1_010_000, 512.0, 10.1)
-    with patch("src.live._now_ms", return_value=1_010_000 + age_ms):
+    with patch("src.live.now_ms", return_value=1_010_000 + age_ms):
         result = latest_power()
-    assert result["w"] == 512.0
-    assert result["t"] == 1_010_000
-    assert result["stale"] is stale
+    assert result == {"t": 1_010_000, "w": 512.0, "age_s": age_s, "stale": stale}
+
+
+def test_last_received_ms_tracks_newest_reading():
+    assert last_received_ms() is None
+    _receive(1_000_000, 300.0, 10.0)
+    _receive(1_010_000, 512.0, 10.1)
+    assert last_received_ms() == 1_010_000
 
 
 def test_append_unsaved_readings_raw_skips_already_saved():

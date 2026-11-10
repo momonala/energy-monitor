@@ -22,20 +22,43 @@ def test_format_downtime(seconds, expected):
     assert format_downtime(seconds) == expected
 
 
+NOW_MS = 1_700_000_000_000
+WEEK_AND_HOUR_MS = int(timedelta(days=7, hours=1).total_seconds() * 1000)
+
+
+@pytest.fixture(autouse=True)
+def no_reading_since_startup(monkeypatch):
+    monkeypatch.setattr("src.mqtt._last_reading_ms", None)
+
+
 def test_online_reports_downtime_from_last_reading():
     """After a restart, downtime comes from the DB, so it survives a restart mid-outage."""
     with (
-        patch("src.mqtt.time_since_last_reading", return_value=timedelta(days=7, hours=1)),
+        patch("src.mqtt.last_reading_ms", return_value=NOW_MS - WEEK_AND_HOUR_MS),
+        patch("src.mqtt.now_ms", return_value=NOW_MS),
+        patch("src.mqtt.metrics") as mock_metrics,
         patch("src.mqtt.send_alert") as mock_alert,
     ):
         handle_lwt_status("Online")
-    mock_alert.assert_called_once()
-    assert "7d 1h 0m 0s" in mock_alert.call_args[0][0]
+    mock_alert.assert_called_once_with("Hardware device came *online* — down for `7d 1h 0m 0s`")
+    mock_metrics.timing.assert_called_once_with("mqtt.device.downtime_ms", WEEK_AND_HOUR_MS)
+
+
+def test_online_prefers_reading_received_since_startup(monkeypatch):
+    monkeypatch.setattr("src.mqtt._last_reading_ms", NOW_MS - 61_500)
+    with (
+        patch("src.mqtt.last_reading_ms") as mock_db,
+        patch("src.mqtt.now_ms", return_value=NOW_MS),
+        patch("src.mqtt.send_alert") as mock_alert,
+    ):
+        handle_lwt_status("Online")
+    mock_db.assert_not_called()
+    mock_alert.assert_called_once_with("Hardware device came *online* — down for `0d 0h 1m 1s`")
 
 
 def test_online_with_empty_db_omits_downtime():
     with (
-        patch("src.mqtt.time_since_last_reading", return_value=None),
+        patch("src.mqtt.last_reading_ms", return_value=None),
         patch("src.mqtt.send_alert") as mock_alert,
     ):
         handle_lwt_status("Online")

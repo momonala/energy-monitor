@@ -6,9 +6,7 @@ subscribes to the meter itself, so live views and stall detection never wait on 
 
 import json
 import threading
-import time
 from collections import deque
-from datetime import timedelta
 
 import paho.mqtt.client as mqtt
 
@@ -16,14 +14,13 @@ from src.config import MQTT_PORT
 from src.config import SERVER_URL
 from src.database import RAW_READING_INTERVAL_MS
 from src.database import parse_mt681
+from src.ingestion import IngestionState
+from src.ingestion import now_ms
 from src.mqtt import FLUSH_INTERVAL_SECONDS
 from src.mqtt import SENSOR_TOPIC
 from src.observability import get_logger
 
 logger = get_logger(__name__)
-
-# Readings arrive roughly every 10s; a minute without one means the feed is broken, not slow.
-LIVE_POWER_STALE_SECONDS = 60
 
 # Covers everything the MQTT service may not have flushed yet, with a margin for a slow flush.
 RECENT_READINGS_MAXLEN = 2 * FLUSH_INTERVAL_SECONDS * 1000 // RAW_READING_INTERVAL_MS
@@ -36,10 +33,6 @@ _lock = threading.Lock()
 _recent: deque[dict] = deque(maxlen=RECENT_READINGS_MAXLEN)
 
 
-def _now_ms() -> int:
-    return int(time.time() * 1000)
-
-
 def record_sensor_payload(payload: dict) -> None:
     """Keep a SENSOR payload as a {t, p, e} reading stamped with its receive time."""
     mt_payload = payload.get("MT681")
@@ -47,31 +40,26 @@ def record_sensor_payload(payload: dict) -> None:
         return
     fields = parse_mt681(mt_payload)
     with _lock:
-        _recent.append({"t": _now_ms(), "p": fields["power_watts"], "e": fields["energy_in_kwh"]})
+        _recent.append({"t": now_ms(), "p": fields["power_watts"], "e": fields["energy_in_kwh"]})
 
 
 def latest_power() -> dict:
     """The newest instantaneous power draw for the live readout, or nulls before the first reading."""
     with _lock:
-        newest = _recent[-1] if _recent else None
-    if newest is None:
-        return {"t": None, "w": None, "age_s": None, "stale": True}
-    age_s = (_now_ms() - newest["t"]) / 1000
+        newest = _recent[-1] if _recent else {"t": None, "p": None}
+    state = IngestionState.at(newest["t"], now_ms())
     return {
         "t": newest["t"],
         "w": newest["p"],
-        "age_s": round(age_s, 1),
-        "stale": age_s > LIVE_POWER_STALE_SECONDS,
+        "age_s": state.age_seconds,
+        "stale": state.is_stale,
     }
 
 
-def time_since_last_received() -> timedelta | None:
-    """Time since this process last received a reading, or None before the first one."""
+def last_received_ms() -> int | None:
+    """When this process last received a reading, or None before the first one."""
     with _lock:
-        newest_ms = _recent[-1]["t"] if _recent else None
-    if newest_ms is None:
-        return None
-    return timedelta(milliseconds=_now_ms() - newest_ms)
+        return _recent[-1]["t"] if _recent else None
 
 
 def append_unsaved_readings(rows: list[dict], start_ms: int, end_ms: int, bucket_ms: int) -> list[dict]:

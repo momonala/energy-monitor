@@ -33,18 +33,20 @@ from src.database import get_monthly_avg_daily_usage
 from src.database import get_moving_avg_daily_usage
 from src.database import get_readings
 from src.database import get_stats
+from src.database import last_reading_ms
 from src.database import latest_energy_reading
 from src.database import log_db_health_check
 from src.database import num_energy_readings_last_hour
 from src.database import num_total_energy_readings
-from src.database import time_since_last_reading
 from src.database import to_ms
 from src.helpers import local_timezone
 from src.helpers import parse_time_param
+from src.ingestion import IngestionState
+from src.ingestion import now_ms
 from src.live import append_unsaved_readings
+from src.live import last_received_ms
 from src.live import latest_power
 from src.live import start_live_feed
-from src.live import time_since_last_received
 from src.observability import get_logger
 from src.observability import metrics
 from src.ostrom import FIRST_ATTEMPT_HOUR
@@ -83,9 +85,6 @@ logging.getLogger("apscheduler").setLevel(logging.WARNING)
 scheduler = APScheduler()
 scheduler.init_app(app)
 
-# The meter publishes roughly every 10s; a longer gap than this means ingestion has stalled.
-READING_STALE_AFTER = timedelta(seconds=60)
-
 # How often the stall watcher runs. Also the window it detects threshold crossings in, so
 # the two must stay in step — passing it explicitly keeps that contract visible.
 INGESTION_WATCH_INTERVAL = timedelta(minutes=1)
@@ -97,16 +96,16 @@ def _scheduled_db_health_check() -> None:
     log_db_health_check()
 
 
-def _time_since_last_reading() -> timedelta | None:
-    """Reading age from the live feed, or from the DB until the feed has seen one since startup."""
-    since_received = time_since_last_received()
-    return since_received if since_received is not None else time_since_last_reading()
+def _ingestion_state() -> IngestionState:
+    """Liveness from the live feed, or from the DB until the feed has seen a reading since startup."""
+    received_ms = last_received_ms()
+    return IngestionState.at(received_ms if received_ms is not None else last_reading_ms(), now_ms())
 
 
 @scheduler.task("cron", id="ingestion_watch", minute="*")
 def _scheduled_ingestion_watch() -> None:
     """Watch for ingestion stalls every minute. The only source of stall alerts."""
-    check_ingestion_stall(_time_since_last_reading(), INGESTION_WATCH_INTERVAL)
+    check_ingestion_stall(_ingestion_state(), INGESTION_WATCH_INTERVAL)
 
 
 @scheduler.task(
@@ -295,13 +294,11 @@ def status():
     The MQTT client runs as a separate systemd service, so this process cannot inspect
     its socket. Ingestion health is inferred from how recently this process saw a reading.
     """
-    since_last_reading = _time_since_last_reading()
+    ingestion = _ingestion_state()
     return {
         "status": "ok",
-        "receiving_readings": since_last_reading is not None and since_last_reading < READING_STALE_AFTER,
-        "seconds_since_last_reading": (
-            round(since_last_reading.total_seconds(), 1) if since_last_reading is not None else None
-        ),
+        "receiving_readings": ingestion.is_receiving,
+        "seconds_since_last_reading": ingestion.age_seconds,
         "topic": TOPIC,
         "tasmota_url": TASMOTA_UI_URL,
         "flask_url": f"http://{SERVER_URL}:{FLASK_PORT}",

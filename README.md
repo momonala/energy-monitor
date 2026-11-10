@@ -80,6 +80,7 @@ energy-monitor/
 │   ├── app.py          # Flask entry point, API routes, mobile detection, APScheduler (stall watch, DB health)
 │   ├── database.py     # SQLAlchemy models, queries, stats
 │   ├── mqtt.py         # Standalone MQTT client service entry point
+│   ├── ingestion.py    # Ingestion liveness (reading age, stale threshold) shared by both processes
 │   ├── helpers.py      # Time parsing utilities
 │   ├── config.py       # Configuration constants
 │   ├── diagnostics.py  # Hop-ladder probe that names the fault domain behind a stall

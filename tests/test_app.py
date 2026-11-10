@@ -7,7 +7,12 @@ from unittest.mock import patch
 
 import pytest
 
+from src.app import _ingestion_state
+from src.app import _scheduled_ingestion_watch
 from src.helpers import local_timezone
+from src.ingestion import IngestionState
+
+NOW_MS = 1_700_000_000_000
 
 _STYLESHEET_HREF_RE = re.compile(r'<link\s+rel="stylesheet"\s+href="([^"]+)"')
 
@@ -63,7 +68,9 @@ def test_api_endpoints_return_json(client, endpoint, expected_keys):
     """API endpoints return valid JSON."""
     with (
         patch("src.app.latest_energy_reading", return_value={"timestamp": "2024-01-01T00:00:00"}),
-        patch("src.app.time_since_last_reading", return_value=timedelta(seconds=5)),
+        patch("src.app.last_received_ms", return_value=None),
+        patch("src.app.last_reading_ms", return_value=NOW_MS - 5_000),
+        patch("src.app.now_ms", return_value=NOW_MS),
         patch("src.app.num_energy_readings_last_hour", return_value=100),
         patch("src.app.num_total_energy_readings", return_value=1000),
     ):
@@ -77,23 +84,50 @@ def test_api_endpoints_return_json(client, endpoint, expected_keys):
 
 
 @pytest.mark.parametrize(
-    "since_last,expected",
+    "age_ms,receiving,seconds",
     [
-        (timedelta(seconds=5), True),
-        (timedelta(hours=3), False),
-        (None, False),
+        (5_000, True, 5.0),
+        (59_999, True, 60.0),
+        (60_000, False, 60.0),
+        (3 * 3_600_000, False, 10800.0),
+        (None, False, None),
     ],
 )
-def test_status_reports_ingestion_health_from_reading_age(client, since_last, expected):
+def test_status_reports_ingestion_health_from_reading_age(client, age_ms, receiving, seconds):
     """`receiving_readings` tracks reading recency, not an unreachable cross-process client."""
     with (
         patch("src.app.latest_energy_reading", return_value=None),
-        patch("src.app.time_since_last_reading", return_value=since_last),
+        patch("src.app.last_received_ms", return_value=None),
+        patch("src.app.last_reading_ms", return_value=None if age_ms is None else NOW_MS - age_ms),
+        patch("src.app.now_ms", return_value=NOW_MS),
         patch("src.app.num_energy_readings_last_hour", return_value=0),
         patch("src.app.num_total_energy_readings", return_value=0),
     ):
         data = client.get("/status").get_json()
-        assert data["receiving_readings"] is expected
+        assert data["receiving_readings"] is receiving
+        assert data["seconds_since_last_reading"] == seconds
+
+
+def test_ingestion_state_prefers_live_feed_over_db():
+    with (
+        patch("src.app.last_received_ms", return_value=NOW_MS - 4_000),
+        patch("src.app.last_reading_ms") as mock_db,
+        patch("src.app.now_ms", return_value=NOW_MS),
+    ):
+        state = _ingestion_state()
+    mock_db.assert_not_called()
+    assert state.age == timedelta(seconds=4)
+
+
+def test_ingestion_watch_passes_state_and_tick_to_stall_check():
+    with (
+        patch("src.app.last_received_ms", return_value=None),
+        patch("src.app.last_reading_ms", return_value=NOW_MS - 120_000),
+        patch("src.app.now_ms", return_value=NOW_MS),
+        patch("src.app.check_ingestion_stall") as mock_check,
+    ):
+        _scheduled_ingestion_watch()
+    mock_check.assert_called_once_with(IngestionState(timedelta(minutes=2)), timedelta(minutes=1))
 
 
 def test_api_readings_accepts_time_params(client):

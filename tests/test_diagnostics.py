@@ -9,6 +9,7 @@ from src.config import GATEWAY_IP
 from src.diagnostics import METER_IP
 from src.diagnostics import classify_stall
 from src.diagnostics import meter_wifi_summary
+from src.ingestion import IngestionState
 
 _STATUS_11 = {
     "StatusSTS": {
@@ -88,11 +89,11 @@ def test_check_ingestion_stall_only_probes_on_a_threshold_crossing():
         patch("src.database.classify_stall", return_value="diagnosis") as mock_classify,
         patch("src.database.send_alert") as mock_alert,
     ):
-        check_ingestion_stall(timedelta(minutes=3), tick)  # between thresholds
+        check_ingestion_stall(IngestionState(timedelta(minutes=3)), tick)  # between thresholds
         mock_classify.assert_not_called()
         mock_alert.assert_not_called()
 
-        check_ingestion_stall(timedelta(minutes=15), tick)  # on a threshold
+        check_ingestion_stall(IngestionState(timedelta(minutes=15)), tick)  # on a threshold
         mock_classify.assert_called_once()
         assert "diagnosis" in mock_alert.call_args[0][0]
 
@@ -101,5 +102,5 @@ def test_check_ingestion_stall_is_quiet_without_any_reading():
     from src.database import check_ingestion_stall
 
     with patch("src.database.send_alert") as mock_alert:
-        check_ingestion_stall(None, timedelta(minutes=1))
+        check_ingestion_stall(IngestionState(None), timedelta(minutes=1))
     mock_alert.assert_not_called()

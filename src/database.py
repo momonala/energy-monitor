@@ -20,6 +20,7 @@ from src.config import DATABASE_PATH
 from src.config import DATABASE_URL
 from src.diagnostics import classify_stall
 from src.helpers import local_timezone
+from src.ingestion import IngestionState
 from src.observability import get_logger
 from src.observability import metrics
 
@@ -225,13 +226,10 @@ def num_total_energy_readings() -> int:
         return session.query(EnergyReading).count()
 
 
-def time_since_last_reading() -> timedelta | None:
-    """Get the time elapsed since the most recent energy reading, or None if the DB is empty."""
+def last_reading_ms() -> int | None:
+    """Timestamp of the most recent saved reading, or None if the DB is empty."""
     with SessionLocal() as session:
-        last_ms = session.query(func.max(EnergyReading.timestamp_ms)).scalar()
-    if last_ms is None:
-        return None
-    return timedelta(milliseconds=_now_ms() - last_ms)
+        return session.query(func.max(EnergyReading.timestamp_ms)).scalar()
 
 
 def _format_timedelta(td: timedelta) -> str:
@@ -265,12 +263,13 @@ def stall_alert_due(gap: timedelta, tick: timedelta) -> bool:
     return any(previous_minutes < threshold <= now_minutes for threshold in thresholds)
 
 
-def check_ingestion_stall(gap: timedelta | None, tick: timedelta) -> None:
-    """Sole owner of stall alerting: given the time since the last reading, diagnose and escalate.
+def check_ingestion_stall(state: IngestionState, tick: timedelta) -> None:
+    """Sole owner of stall alerting: given the ingestion state, diagnose and escalate.
 
     `tick` is how often the caller runs this, and defines the window a threshold crossing is
     detected in. Diagnosis probes the network, so it only runs on a crossing, never per tick.
     """
+    gap = state.age
     if gap is None:
         return
     metrics.gauge("db.ingestion.gap_seconds", gap.total_seconds())

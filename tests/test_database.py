@@ -2,15 +2,18 @@
 
 from datetime import datetime
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import text
 
+from src.database import check_ingestion_stall
 from src.database import get_daily_energy_usage
 from src.database import get_moving_avg_daily_usage
 from src.database import get_stats
 from src.database import stall_alert_due
 from src.helpers import local_timezone
+from src.ingestion import IngestionState
 
 
 def test_daily_energy_usage_groups_by_day(test_db, sample_readings):
@@ -237,3 +240,26 @@ def test_stall_alert_due_never_repeats_within_a_band():
     tick = timedelta(minutes=1)
     fired = [m for m in range(1, 1441) if stall_alert_due(timedelta(minutes=m), tick)]
     assert fired == [2, 15, 60, 360, 1440]
+
+
+@pytest.mark.parametrize(
+    "age,alert",
+    [
+        (None, None),
+        (timedelta(seconds=119, milliseconds=999), None),
+        (timedelta(minutes=2), "No readings for `2m`\nDIAG"),
+        (timedelta(minutes=3), None),
+        (timedelta(minutes=60), "No readings for `1h 0m`\nDIAG"),
+        (timedelta(minutes=2880), "No readings for `48h 0m`\nDIAG"),
+    ],
+)
+def test_check_ingestion_stall_alerts_on_threshold_crossing(age, alert):
+    with (
+        patch("src.database.classify_stall", return_value="DIAG"),
+        patch("src.database.send_alert") as mock_alert,
+    ):
+        check_ingestion_stall(IngestionState(age), timedelta(minutes=1))
+    if alert is None:
+        mock_alert.assert_not_called()
+    else:
+        mock_alert.assert_called_once_with(alert)

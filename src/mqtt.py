@@ -6,7 +6,6 @@ import signal
 import sys
 import threading
 import time
-from datetime import timedelta
 
 import paho.mqtt.client as mqtt
 
@@ -17,9 +16,11 @@ from src.config import SERVER_URL
 from src.config import TOPIC
 from src.database import format_mt681_summary
 from src.database import init_db
+from src.database import last_reading_ms
 from src.database import parse_mt681
 from src.database import save_energy_readings
-from src.database import time_since_last_reading
+from src.ingestion import IngestionState
+from src.ingestion import now_ms
 from src.observability import get_logger
 from src.observability import metrics
 
@@ -59,7 +60,7 @@ def handle_lwt_status(payload: str) -> None:
         return
     if payload == "Online":
         metrics.increment("mqtt.device.online")
-        downtime = _time_since_last_reading()
+        downtime = _ingestion_state().age
         if downtime is None:
             send_alert("Hardware device came *online*")
             return
@@ -69,11 +70,10 @@ def handle_lwt_status(payload: str) -> None:
         send_alert(f"Hardware device came *online* — down for `{format_downtime(downtime_s)}`")
 
 
-def _time_since_last_reading() -> timedelta | None:
-    """Time since this process last received a reading, falling back to the DB after a restart."""
-    if _last_reading_ms is None:
-        return time_since_last_reading()
-    return timedelta(milliseconds=time.time() * 1000 - _last_reading_ms)
+def _ingestion_state() -> IngestionState:
+    """Liveness from this process's last reading, falling back to the DB after a restart."""
+    received_ms = _last_reading_ms if _last_reading_ms is not None else last_reading_ms()
+    return IngestionState.at(received_ms, now_ms())
 
 
 def _flush(rows: list[dict]) -> None:
@@ -141,7 +141,7 @@ def on_message(client, userdata, msg):
             return
         logger.debug("[mqtt] received SENSOR: %s", format_mt681_summary(mt_payload))
         metrics.increment("mqtt.messages.mqtt_reading")
-        _last_reading_ms = int(time.time() * 1000)
+        _last_reading_ms = now_ms()
         db_queue.put({"timestamp_ms": _last_reading_ms, **parse_mt681(mt_payload)})
     elif msg.topic == STATE_TOPIC:
         logger.debug("[msg] %s: %s", msg.topic, data)
