@@ -27,6 +27,7 @@ from src.config import TOPIC
 from src.database import DEFAULT_LOOKBACK_WEEKS
 from src.database import DEFAULT_READINGS_BUCKET_MS
 from src.database import MAX_READINGS_BUCKET_MS
+from src.database import MAX_READINGS_POINTS
 from src.database import check_ingestion_stall
 from src.database import get_daily_energy_usage
 from src.database import get_monthly_avg_daily_usage
@@ -195,17 +196,19 @@ def api_readings():
     """Return readings as {t, p, e} for timestamp, power, energy.
 
     Optional bucket_ms selects the downsampling resolution (0 = raw rows);
-    defaults to 2-minute buckets, clamped to at most one day.
+    defaults to 2-minute buckets, raised so the span yields at most
+    MAX_READINGS_POINTS buckets, and clamped to at most one day.
     """
     start = parse_time_param(request.args.get("start"))
     end = parse_time_param(request.args.get("end"))
     bucket_ms = request.args.get("bucket_ms", type=int)
     if bucket_ms is None:
         bucket_ms = DEFAULT_READINGS_BUCKET_MS
-    bucket_ms = max(0, min(bucket_ms, MAX_READINGS_BUCKET_MS))
     now = datetime.now(local_timezone())
     end = end or now
     start = start or now - timedelta(weeks=DEFAULT_LOOKBACK_WEEKS)
+    min_bucket_ms = (to_ms(end) - to_ms(start)) // MAX_READINGS_POINTS
+    bucket_ms = max(0, min(max(bucket_ms, min_bucket_ms), MAX_READINGS_BUCKET_MS))
     rows = get_readings(start=start, end=end, bucket_ms=bucket_ms)
     return jsonify(append_unsaved_readings(rows, to_ms(start), to_ms(end), bucket_ms))
 
@@ -316,14 +319,14 @@ def observability():
 
 
 def main():
-    logger.info(f"Starting Flask server on http://0.0.0.0:{FLASK_PORT}")
+    logger.info(f"Starting Flask server on http://127.0.0.1:{FLASK_PORT}")
     logger.info(f"Status: {json.dumps(status(), indent=2)}")
     start_live_feed()
     scheduler.start()
     logger.info(
         "Started APScheduler: hourly DB health check, per-minute ingestion watch, month-end Ostrom reading"
     )
-    app.run(host="0.0.0.0", port=FLASK_PORT, debug=False)
+    app.run(host="127.0.0.1", port=FLASK_PORT, debug=False)
 
 
 if __name__ == "__main__":

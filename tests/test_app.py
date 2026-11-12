@@ -9,6 +9,7 @@ import pytest
 
 from src.app import _ingestion_state
 from src.app import _scheduled_ingestion_watch
+from src.database import RAW_READING_INTERVAL_MS
 from src.helpers import local_timezone
 from src.ingestion import IngestionState
 
@@ -99,6 +100,16 @@ def test_api_readings_accepts_time_params(client):
         response = client.get("/api/readings?start=1704067200000&end=1704153600000")
         assert response.status_code == 200
         assert isinstance(response.get_json(), list)
+
+
+@pytest.mark.parametrize(("span_days", "stays_raw"), [(0.25, True), (365, False)])
+def test_api_readings_only_serves_raw_rows_while_the_span_is_short(client, span_days, stays_raw):
+    """A raw (bucket_ms=0) request over a long span is downsampled instead of returning every row."""
+    span_ms = int(span_days * 86_400_000)
+    with patch("src.app.get_readings", return_value=[]) as mock_get:
+        response = client.get(f"/api/readings?start={NOW_MS - span_ms}&end={NOW_MS}&bucket_ms=0")
+    assert response.status_code == 200
+    assert (mock_get.call_args.kwargs["bucket_ms"] <= RAW_READING_INTERVAL_MS) is stays_raw
 
 
 def test_api_energy_summary_accepts_time_params(client):

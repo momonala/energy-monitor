@@ -292,6 +292,7 @@ def log_db_health_check():
 DEFAULT_READINGS_BUCKET_MS = 120_000
 RAW_READING_INTERVAL_MS = 10_000  # sensor TelePeriod; buckets at or below this are raw rows
 MAX_READINGS_BUCKET_MS = MS_PER_DAY
+MAX_READINGS_POINTS = 20_000
 
 
 def get_readings(start: datetime, end: datetime, bucket_ms: int) -> list[dict]:
